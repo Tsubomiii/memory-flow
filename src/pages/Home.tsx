@@ -20,6 +20,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [showLangMenu, setShowLangMenu] = useState(false)
   
+  // 📝 新增：输入框相关状态
   const [newContent, setNewContent] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isAnonymous, setIsAnonymous] = useState(false)
@@ -47,13 +48,31 @@ export default function Home() {
     setLoading(false)
   }
 
+  // 📝 找到这个函数，全选替换// 发送第一条笔记
   const handleAddFirstNote = async () => {
     if (!newContent.trim()) return
     setIsSubmitting(true)
     
+    // 1. 先获取当前用户的“身份证号” (无论是游客还是正式用户都有)
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      alert('无法获取用户信息，请重新登录')
+      setIsSubmitting(false)
+      return
+    }
+
+    // 2. 组装数据：内容 + 复习时间 + 主人ID
+    const newNotePayload = {
+      content: newContent,
+      review_stage: 0,
+      next_review_at: new Date().toISOString(),
+      user_id: user.id  // 👈 关键修改：明确告诉数据库这是谁的笔记！
+    }
+
     const { data, error } = await supabase
       .from('notes')
-      .insert([{ content: newContent }])
+      .insert([newNotePayload])
       .select()
 
     if (!error && data) {
@@ -61,7 +80,9 @@ export default function Home() {
       setNotes([newNote, ...notes])
       setNewContent('') 
     } else {
-      alert('Error saving note')
+      console.error('详细错误:', error)
+      // 👇 这里改了一下，如果再报错，它会直接把原因弹窗告诉你
+      alert(`保存失败: ${error?.message}`)
     }
     setIsSubmitting(false)
   }
@@ -111,6 +132,7 @@ export default function Home() {
 
   if (loading) return <div className="p-10 text-center text-gray-400">{t.loading}</div>
 
+  // 判断是否为空状态
   const isEmptyState = notes.length === 0;
 
   return (
@@ -135,6 +157,7 @@ export default function Home() {
       )}
 
       <div className="p-6 space-y-8">
+        {/* 顶部栏 */}
         <header className="flex justify-between items-center">
           <h1 className="text-2xl font-black text-gray-900 tracking-tight">{t.app_title}</h1>
           <div className="flex items-center gap-2">
@@ -150,7 +173,7 @@ export default function Home() {
                 </div>
               )}
             </div>
-            {/* 🚪 Logout */}
+            {/* 🚪 退出按钮 (这里是小门图标) */}
             <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors" title="Logout">
                <LogOut className="w-5 h-5" />
             </button>
@@ -159,6 +182,7 @@ export default function Home() {
 
         {/* 🔀 动态区域 */}
         {isEmptyState ? (
+          // 🅰️ 空状态：显示大输入框
           <div className="flex flex-col items-center justify-center pt-10 animate-in fade-in zoom-in duration-500">
              <div className="w-full bg-white p-6 rounded-3xl shadow-lg border border-indigo-50">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">
@@ -189,7 +213,9 @@ export default function Home() {
              </p>
           </div>
         ) : (
+          // 🅱️ 正常状态：显示列表 + 悬浮按钮
           <>
+            {/* 复习区域 */}
             {dueNotes.length > 0 && (
               <section className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
                 <div className="flex items-center gap-2 text-indigo-600 font-bold text-lg">
@@ -207,6 +233,7 @@ export default function Home() {
               </section>
             )}
 
+            {/* 所有列表 */}
             <section className="space-y-4 animate-in fade-in duration-500 delay-150">
               <h2 className="text-gray-400 font-bold text-sm uppercase tracking-wider ml-1">{t.all_memories}</h2>
               <div className="grid gap-3">
@@ -219,6 +246,7 @@ export default function Home() {
               </div>
             </section>
 
+            {/* 悬浮按钮 */}
             <Link to="/input" className="fixed bottom-8 right-8 bg-black text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform active:scale-95 z-50">
               <Plus className="w-6 h-6" />
             </Link>
