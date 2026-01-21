@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Plus, Trash2, CheckCircle2, Clock, Globe, AlertTriangle, Send, Loader2 } from 'lucide-react'
+import { Plus, Trash2, CheckCircle2, Clock, Globe, AlertTriangle, Send, Loader2, LogOut } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLanguage } from '../lib/i18n'
 
@@ -20,12 +20,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [showLangMenu, setShowLangMenu] = useState(false)
   
-  // 📝 专门给“第一次”用的输入框状态
   const [newContent, setNewContent] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-
-  // 🕵️ 游客状态
   const [isAnonymous, setIsAnonymous] = useState(false)
+  
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -35,9 +33,7 @@ export default function Home() {
 
   const checkUser = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    if (user?.is_anonymous) {
-      setIsAnonymous(true)
-    }
+    if (user?.is_anonymous) setIsAnonymous(true)
   }
 
   const fetchNotes = async () => {
@@ -51,7 +47,6 @@ export default function Home() {
     setLoading(false)
   }
 
-  // 📝 发送第一条笔记 (空状态专用)
   const handleAddFirstNote = async () => {
     if (!newContent.trim()) return
     setIsSubmitting(true)
@@ -65,7 +60,6 @@ export default function Home() {
       const newNote = data[0] as Note
       setNotes([newNote, ...notes])
       setNewContent('') 
-      // ✨ 保存成功的瞬间，因为 notes 不为空了，界面会自动变成“列表模式”
     } else {
       alert('Error saving note')
     }
@@ -93,7 +87,7 @@ export default function Home() {
 
   const handleDelete = async (id: number) => {
     if (!confirm('Are you sure?')) return
-    setNotes(notes.filter(n => n.id !== id))
+    setNotes(prev => prev.filter(n => n.id !== id))
     await supabase.from('notes').delete().eq('id', id)
   }
 
@@ -101,8 +95,14 @@ export default function Home() {
     if (isAnonymous) {
       if (!confirm(lang === 'zh' ? '警告：作为游客退出后，您的笔记可能会丢失！确定要退出吗？' : 'Warning: Guest data may be lost upon logout. Continue?')) return
     }
-    await supabase.auth.signOut()
-    navigate('/login')
+    try {
+      await supabase.auth.signOut()
+    } catch (error) {
+      console.error("Logout error:", error)
+    } finally {
+      navigate('/login')
+      window.location.reload()
+    }
   }
 
   const now = new Date()
@@ -111,13 +111,12 @@ export default function Home() {
 
   if (loading) return <div className="p-10 text-center text-gray-400">{t.loading}</div>
 
-  // ✨ 判断逻辑：笔记库是不是空的？
   const isEmptyState = notes.length === 0;
 
   return (
-    <div className="max-w-2xl mx-auto min-h-screen bg-gray-50 relative">
+    <div className="max-w-2xl mx-auto min-h-screen bg-gray-50 relative pb-32">
       
-      {/* ⚠️ 游客警告条 (一直都在，提醒安全) */}
+      {/* ⚠️ 游客警告条 */}
       {isAnonymous && (
         <div className="bg-orange-50 border-b border-orange-100 p-3 px-6 flex items-start gap-3 animate-in slide-in-from-top duration-300">
           <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
@@ -126,7 +125,7 @@ export default function Home() {
               {lang === 'zh' ? '游客模式运行中' : lang === 'ja' ? 'ゲストモードで使用中' : 'Guest Mode Active'}
             </p>
             <p className="text-xs text-orange-600 mt-0.5">
-              {lang === 'zh' ? '数据仅保存在本机。建议注册以永久保存。' : 'Data is local only. Register to save permanently.'}
+              {lang === 'zh' ? '数据仅保存在本机。' : 'Data is local only.'}
             </p>
           </div>
           <button onClick={handleLogout} className="text-xs bg-white border border-orange-200 text-orange-700 px-3 py-1.5 rounded-full hover:bg-orange-100 whitespace-nowrap">
@@ -135,8 +134,7 @@ export default function Home() {
         </div>
       )}
 
-      <div className="p-6 space-y-8 pb-32">
-        {/* 顶部栏 */}
+      <div className="p-6 space-y-8">
         <header className="flex justify-between items-center">
           <h1 className="text-2xl font-black text-gray-900 tracking-tight">{t.app_title}</h1>
           <div className="flex items-center gap-2">
@@ -152,16 +150,15 @@ export default function Home() {
                 </div>
               )}
             </div>
-            <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-gray-600 px-2">
-               {lang === 'zh' ? '退出' : 'Logout'}
+            {/* 🚪 Logout */}
+            <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors" title="Logout">
+               <LogOut className="w-5 h-5" />
             </button>
           </div>
         </header>
 
-        {/* 🔀 动态区域开始 */}
-        
+        {/* 🔀 动态区域 */}
         {isEmptyState ? (
-          // 🅰️ 空状态：显示大大的输入框，邀请用户开始
           <div className="flex flex-col items-center justify-center pt-10 animate-in fade-in zoom-in duration-500">
              <div className="w-full bg-white p-6 rounded-3xl shadow-lg border border-indigo-50">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">
@@ -192,9 +189,7 @@ export default function Home() {
              </p>
           </div>
         ) : (
-          // 🅱️ 正常状态：显示列表，输入框变成右下角悬浮按钮
           <>
-            {/* 复习区域 */}
             {dueNotes.length > 0 && (
               <section className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
                 <div className="flex items-center gap-2 text-indigo-600 font-bold text-lg">
@@ -212,7 +207,6 @@ export default function Home() {
               </section>
             )}
 
-            {/* 所有列表 */}
             <section className="space-y-4 animate-in fade-in duration-500 delay-150">
               <h2 className="text-gray-400 font-bold text-sm uppercase tracking-wider ml-1">{t.all_memories}</h2>
               <div className="grid gap-3">
@@ -225,7 +219,6 @@ export default function Home() {
               </div>
             </section>
 
-            {/* ✨ 悬浮按钮回归！ */}
             <Link to="/input" className="fixed bottom-8 right-8 bg-black text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform active:scale-95 z-50">
               <Plus className="w-6 h-6" />
             </Link>
