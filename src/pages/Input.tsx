@@ -24,15 +24,9 @@ export default function Input() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
 
-  // ✨ Helper: 生成默认时间标题 (YYYY/MM/DD HH:mm)
   const getDefaultTitle = () => {
     const now = new Date()
-    const y = now.getFullYear()
-    const m = String(now.getMonth() + 1).padStart(2, '0')
-    const d = String(now.getDate()).padStart(2, '0')
-    const h = String(now.getHours()).padStart(2, '0')
-    const min = String(now.getMinutes()).padStart(2, '0')
-    return `${y}/${m}/${d} ${h}:${min}`
+    return `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
   }
 
   // Image Logic
@@ -46,14 +40,11 @@ export default function Input() {
 
   // Save Logic
   const handleSave = async () => {
-    // ✨ 如果没有输入内容也没选图片，才拦截。标题空着没事。
     if (!title.trim() && !content.trim() && !selectedImage) return alert('Please enter something')
-    
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    // ✨ 核心逻辑：如果有标题就用标题，没有就用当前时间
     const finalTitle = title.trim() || getDefaultTitle()
 
     let url = null
@@ -64,9 +55,9 @@ export default function Input() {
     }
 
     const { error } = await supabase.from('notes').insert([{
-      title: finalTitle, // 使用自动生成的标题
+      title: finalTitle, 
       content, 
-      text_color: 'text-gray-900',
+      text_color: 'text-gray-900', 
       image_url: url, 
       masks, 
       review_stage: 0, 
@@ -93,22 +84,24 @@ export default function Input() {
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
            <div className="flex items-center gap-3 mb-2">
               <Type className="w-5 h-5 text-gray-400" />
-              {/* ✨ 这里的 Placeholder 改了 */}
-              <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title (Optional - Auto Date)" className="w-full text-lg font-bold outline-none placeholder:text-gray-300 text-gray-900" />
+              {/* ✨ 限制 50 字 */}
+              <input 
+                maxLength={50}
+                value={title} 
+                onChange={e => setTitle(e.target.value)} 
+                placeholder="Title (Optional - Auto Date)" 
+                className="w-full text-lg font-bold outline-none placeholder:text-gray-300 text-gray-900" 
+              />
            </div>
+           {/* ✨ 字数统计 */}
+           <div className="text-right text-xs text-gray-300 font-medium">{title.length}/50</div>
         </div>
 
         {/* Content */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
            <div className="flex gap-3 min-h-[150px]">
               <AlignLeft className="w-5 h-5 text-gray-400 mt-1" />
-              <textarea 
-                value={content} 
-                onChange={e => setContent(e.target.value)} 
-                placeholder="Add details..." 
-                className="w-full h-full resize-none outline-none bg-transparent leading-relaxed text-lg text-gray-900" 
-                style={{ minHeight: '150px' }} 
-              />
+              <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Add details..." className="w-full h-full resize-none outline-none bg-transparent leading-relaxed text-lg text-gray-900" style={{ minHeight: '150px' }} />
            </div>
         </div>
 
@@ -127,7 +120,6 @@ export default function Input() {
            </button>
         )}
         <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageSelect} className="hidden" />
-
         {masks.length > 0 && (<div className="flex justify-end"><button onClick={undoMask} className="flex items-center gap-2 text-red-500 font-bold bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-100"><Eraser className="w-4 h-4" /> Undo Mask</button></div>)}
       </div>
     </div>
