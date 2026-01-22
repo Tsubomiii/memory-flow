@@ -24,6 +24,17 @@ export default function Input() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
 
+  // ✨ Helper: 生成默认时间标题 (YYYY/MM/DD HH:mm)
+  const getDefaultTitle = () => {
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = String(now.getMonth() + 1).padStart(2, '0')
+    const d = String(now.getDate()).padStart(2, '0')
+    const h = String(now.getHours()).padStart(2, '0')
+    const min = String(now.getMinutes()).padStart(2, '0')
+    return `${y}/${m}/${d} ${h}:${min}`
+  }
+
   // Image Logic
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files && e.target.files[0]) { setSelectedImage(e.target.files[0]); setImagePreview(URL.createObjectURL(e.target.files[0])); setMasks([]) } }
   const createMask = (clientX: number, clientY: number) => { if (!imgRef.current) return; const rect = imgRef.current.getBoundingClientRect(); const w = Math.abs((clientX - rect.left) - startPos.x); const h = Math.abs((clientY - rect.top) - startPos.y); if (w > 5 && h > 5) { setMasks([...masks, { id: Date.now().toString(), x: (Math.min(clientX - rect.left, startPos.x) / rect.width) * 100, y: (Math.min(clientY - rect.top, startPos.y) / rect.height) * 100, w: (w / rect.width) * 100, h: (h / rect.height) * 100 }]) } }
@@ -35,10 +46,15 @@ export default function Input() {
 
   // Save Logic
   const handleSave = async () => {
-    if (!title.trim()) return alert('Please enter a title')
+    // ✨ 如果没有输入内容也没选图片，才拦截。标题空着没事。
+    if (!title.trim() && !content.trim() && !selectedImage) return alert('Please enter something')
+    
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+
+    // ✨ 核心逻辑：如果有标题就用标题，没有就用当前时间
+    const finalTitle = title.trim() || getDefaultTitle()
 
     let url = null
     if (selectedImage) {
@@ -48,9 +64,9 @@ export default function Input() {
     }
 
     const { error } = await supabase.from('notes').insert([{
-      title, 
+      title: finalTitle, // 使用自动生成的标题
       content, 
-      text_color: 'text-gray-900', // ✨ 强制黑色
+      text_color: 'text-gray-900',
       image_url: url, 
       masks, 
       review_stage: 0, 
@@ -77,7 +93,8 @@ export default function Input() {
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
            <div className="flex items-center gap-3 mb-2">
               <Type className="w-5 h-5 text-gray-400" />
-              <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title (Required)" className="w-full text-lg font-bold outline-none placeholder:text-gray-300 text-gray-900" />
+              {/* ✨ 这里的 Placeholder 改了 */}
+              <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title (Optional - Auto Date)" className="w-full text-lg font-bold outline-none placeholder:text-gray-300 text-gray-900" />
            </div>
         </div>
 
@@ -85,7 +102,6 @@ export default function Input() {
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
            <div className="flex gap-3 min-h-[150px]">
               <AlignLeft className="w-5 h-5 text-gray-400 mt-1" />
-              {/* ✨ 强制 text-gray-900 */}
               <textarea 
                 value={content} 
                 onChange={e => setContent(e.target.value)} 

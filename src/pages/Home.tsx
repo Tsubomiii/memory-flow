@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { Plus, Trash2, Clock, Calendar, CheckCircle2, Loader2, LogOut, X, CheckCircle, RefreshCcw, AlertTriangle, Mail, Lock, Trophy } from 'lucide-react'
+import { Plus, Trash2, Clock, Calendar, CheckCircle2, Loader2, LogOut, X, CheckCircle, RefreshCcw, AlertTriangle, Mail, Lock, Trophy, Type, AlignLeft, Image as ImageIcon, Send, Eraser } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 
 // Types
@@ -38,6 +38,11 @@ export default function Home() {
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
   
+  // Quick Input (Empty State)
+  const [newTitle, setNewTitle] = useState(''); const [newContent, setNewContent] = useState('')
+  const [selectedImage, setSelectedImage] = useState<File | null>(null); const [imagePreview, setImagePreview] = useState<string | null>(null); const [masks, setMasks] = useState<Mask[]>([]); const [isDrawing, setIsDrawing] = useState(false); const [startPos, setStartPos] = useState({ x: 0, y: 0 })
+  const [isSubmitting, setIsSubmitting] = useState(false); const [isAnonymous, setIsAnonymous] = useState(false) 
+
   // Review & Edit State
   const [reviewingNote, setReviewingNote] = useState<Note | null>(null)
   const [editingContent, setEditingContent] = useState('')
@@ -45,9 +50,8 @@ export default function Home() {
   // Upgrade State
   const [showRegisterModal, setShowRegisterModal] = useState(false)
   const [registerEmail, setRegisterEmail] = useState(''); const [registerPassword, setRegisterPassword] = useState(''); const [isRegistering, setIsRegistering] = useState(false); const [registerSuccess, setRegisterSuccess] = useState(false)
-  const [isAnonymous, setIsAnonymous] = useState(false) 
   
-  const navigate = useNavigate()
+  const fileInputRef = useRef<HTMLInputElement>(null); const imgRef = useRef<HTMLImageElement>(null); const navigate = useNavigate()
 
   useEffect(() => { checkUser(); fetchNotes() }, [])
   const checkUser = async () => { const { data: { user } } = await supabase.auth.getUser(); if (user?.is_anonymous) setIsAnonymous(true) }
@@ -63,74 +67,61 @@ export default function Home() {
     return Math.ceil((target - now) / (1000 * 3600 * 24))
   }
 
-  // ✨ 核心修复：Handle Review with Error Checking
+  // ✨ Helper: 生成默认时间标题
+  const getDefaultTitle = () => {
+    const now = new Date()
+    return `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  }
+
+  // ✨ Quick Save (Empty State Logic Updated)
+  const handleAddFirstNote = async () => { 
+    if (!newContent.trim() && !selectedImage && !newTitle.trim()) return; 
+    setIsSubmitting(true); 
+    const { data: { user } } = await supabase.auth.getUser(); if (!user) return; 
+    let url = null; 
+    if (selectedImage) { const name = `${Math.random()}.${selectedImage.name.split('.').pop()}`; await supabase.storage.from('photos').upload(`${user.id}/${name}`, selectedImage); url = supabase.storage.from('photos').getPublicUrl(`${user.id}/${name}`).data.publicUrl } 
+    
+    // ✨ 如果没有标题，自动生成
+    const finalTitle = newTitle.trim() || getDefaultTitle()
+
+    await supabase.from('notes').insert([{ title: finalTitle, content: newContent, text_color: 'text-gray-900', image_url: url, masks, review_stage: 0, next_review_at: new Date().toISOString(), user_id: user.id }]); 
+    const {data} = await supabase.from('notes').select().order('created_at', {ascending: false}).limit(1); 
+    if(data) { setNotes([data[0], ...notes]); setNewContent(''); setNewTitle(''); setSelectedImage(null); setImagePreview(null); setMasks([]); }; 
+    setIsSubmitting(false) 
+  }
+
+  // Drawing Logic (Empty State)
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files && e.target.files[0]) { if(e.target.files[0].size > 5*1024*1024) return; setSelectedImage(e.target.files[0]); setImagePreview(URL.createObjectURL(e.target.files[0])); setMasks([]) } }
+  const handleMouseDown = (e: React.MouseEvent) => { if (!imgRef.current) return; const rect = imgRef.current.getBoundingClientRect(); setStartPos({ x: e.clientX - rect.left, y: e.clientY - rect.top }); setIsDrawing(true) }
+  const handleMouseUp = (e: React.MouseEvent) => { if (!isDrawing) return; const rect = imgRef.current!.getBoundingClientRect(); const w = Math.abs((e.clientX-rect.left)-startPos.x); const h = Math.abs((e.clientY-rect.top)-startPos.y); if(w>5 && h>5) setMasks([...masks, { id: Date.now().toString(), x: (Math.min(e.clientX-rect.left, startPos.x)/rect.width)*100, y: (Math.min(e.clientY-rect.top, startPos.y)/rect.height)*100, w: (w/rect.width)*100, h: (h/rect.height)*100 }]); setIsDrawing(false) }
+  const handleTouchStart = (e: React.TouchEvent) => { if (!imgRef.current) return; const touch = e.touches[0]; const rect = imgRef.current.getBoundingClientRect(); setStartPos({ x: touch.clientX - rect.left, y: touch.clientY - rect.top }); setIsDrawing(true) }
+  const handleTouchEnd = (e: React.TouchEvent) => { if (!isDrawing) return; const touch = e.changedTouches[0]; const rect = imgRef.current!.getBoundingClientRect(); const w = Math.abs((touch.clientX-rect.left)-startPos.x); const h = Math.abs((touch.clientY-rect.top)-startPos.y); if(w>5 && h>5) setMasks([...masks, { id: Date.now().toString(), x: (Math.min(touch.clientX-rect.left, startPos.x)/rect.width)*100, y: (Math.min(touch.clientY-rect.top, startPos.y)/rect.height)*100, w: (w/rect.width)*100, h: (h/rect.height)*100 }]); setIsDrawing(false) }
+  const undoMask = () => setMasks(prev => prev.slice(0, -1))
+
+  // Review & Reset Logic
   const handleReview = async () => { 
     if (!reviewingNote) return
-    
-    // 1. Calculate new state
-    let nextStage = reviewingNote.review_stage
-    let nextDateISO = reviewingNote.next_review_at
-
-    if (reviewingNote.review_stage < REVIEW_INTERVALS.length) {
-       // Promote
-       const days = REVIEW_INTERVALS[reviewingNote.review_stage]
-       nextStage = reviewingNote.review_stage + 1
-       const nextDate = new Date(); 
-       nextDate.setDate(nextDate.getDate() + days);
-       nextDateISO = nextDate.toISOString()
-    } else {
-       // Already Mastered (Just update content)
-       if(reviewingNote.review_stage < 99) nextStage = 99
-    }
-
-    // 2. Optimistic UI Update (先变界面)
-    const originalNotes = [...notes] // 备份一下，以防失败
-    setNotes(notes.map(n => n.id === reviewingNote.id ? { ...n, content: editingContent, review_stage: nextStage, next_review_at: nextDateISO } : n)); 
-    setReviewingNote(null) 
-
-    // 3. Database Update (后存数据库)
-    const { error } = await supabase.from('notes').update({ 
-      content: editingContent, 
-      review_stage: nextStage, 
-      next_review_at: nextDateISO 
-    }).eq('id', reviewingNote.id)
-
-    // ✨ 4. Error Handling (如果失败，回滚并报错)
-    if (error) {
-      console.error("Review failed:", error)
-      alert("Sync failed: " + error.message)
-      setNotes(originalNotes) // 回滚
-    }
-  }
-
-  // ✨ Handle Reset with Error Checking
-  const handleReset = async () => {
-    if (!reviewingNote) return
-    const nowISO = new Date().toISOString()
+    let nextStage = reviewingNote.review_stage; let nextDateISO = reviewingNote.next_review_at
+    if (reviewingNote.review_stage < REVIEW_INTERVALS.length) { const days = REVIEW_INTERVALS[reviewingNote.review_stage]; nextStage = reviewingNote.review_stage + 1; const nextDate = new Date(); nextDate.setDate(nextDate.getDate() + days); nextDateISO = nextDate.toISOString() } 
+    else { if(reviewingNote.review_stage < 99) nextStage = 99 }
     
     const originalNotes = [...notes]
+    setNotes(notes.map(n => n.id === reviewingNote.id ? { ...n, content: editingContent, review_stage: nextStage, next_review_at: nextDateISO } : n)); 
+    setReviewingNote(null) 
+    const { error } = await supabase.from('notes').update({ content: editingContent, review_stage: nextStage, next_review_at: nextDateISO }).eq('id', reviewingNote.id)
+    if (error) { alert("Sync failed: " + error.message); setNotes(originalNotes) }
+  }
+
+  const handleReset = async () => {
+    if (!reviewingNote) return
+    const nowISO = new Date().toISOString(); const originalNotes = [...notes]
     setNotes(notes.map(n => n.id === reviewingNote.id ? { ...n, content: editingContent, review_stage: 0, next_review_at: nowISO } : n));
     setReviewingNote(null)
-    
-    const { error } = await supabase.from('notes').update({ 
-      content: editingContent, 
-      review_stage: 0, 
-      next_review_at: nowISO 
-    }).eq('id', reviewingNote.id)
-
-    if (error) {
-      alert("Reset failed: " + error.message)
-      setNotes(originalNotes)
-    }
+    const { error } = await supabase.from('notes').update({ content: editingContent, review_stage: 0, next_review_at: nowISO }).eq('id', reviewingNote.id)
+    if (error) { alert("Reset failed: " + error.message); setNotes(originalNotes) }
   }
 
-  const handleDelete = async (id: number) => { 
-    if (!confirm('Delete this memory?')) return; 
-    setNotes(prev => prev.filter(n => n.id !== id)); 
-    const { error } = await supabase.from('notes').delete().eq('id', id)
-    if (error) alert("Delete failed: " + error.message)
-  }
-
+  const handleDelete = async (id: number) => { if (!confirm('Delete this memory?')) return; setNotes(prev => prev.filter(n => n.id !== id)); const { error } = await supabase.from('notes').delete().eq('id', id); if (error) alert("Delete failed: " + error.message) }
   const handleLogout = async () => { if (isAnonymous && !confirm('Guest data will be lost. Are you sure?')) return; await supabase.auth.signOut(); navigate('/login'); window.location.reload() }
   const handleUpgradeAccount = async (e: React.FormEvent) => { e.preventDefault(); setIsRegistering(true); const { error } = await supabase.auth.updateUser({ email: registerEmail, password: registerPassword }); if (error) { alert(`Error: ${error.message}`) } else { setRegisterSuccess(true) }; setIsRegistering(false) }
 
@@ -165,7 +156,7 @@ export default function Home() {
                   </div>
               </div>
               <div className="p-4 border-t border-gray-100 bg-gray-50 flex gap-3">
-                 <button onClick={handleReset} className="flex-1 bg-white text-gray-500 border border-gray-200 py-4 rounded-xl font-bold text-lg hover:bg-gray-100 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-sm"><RefreshCcw className="w-5 h-5" /><span>{isReviewingFuture ? 'Reset' : 'Reset'}</span></button>
+                 <button onClick={handleReset} className="flex-1 bg-white text-gray-500 border border-gray-200 py-4 rounded-xl font-bold text-lg hover:bg-gray-100 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-sm"><RefreshCcw className="w-5 h-5" /><span>{isReviewingFuture ? 'Reset to Today' : 'Reset / Forgot'}</span></button>
                  {!isReviewingFuture && !isReviewingMastered && (<button onClick={handleReview} className="flex-[2] bg-black text-white py-4 rounded-xl font-bold text-lg hover:bg-gray-800 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg"><CheckCircle className="w-6 h-6 text-green-400" /><span>I remember</span></button>)}
                  {isReviewingMastered && (<button onClick={handleReview} className="flex-[2] bg-gray-100 text-gray-400 py-4 rounded-xl font-bold text-lg cursor-default flex items-center justify-center gap-2"><Trophy className="w-5 h-5" /><span>Mastered</span></button>)}
               </div>
@@ -180,7 +171,29 @@ export default function Home() {
         </header>
 
         {isEmptyState ? (
-           <div className="text-center py-20 opacity-50"><p>No memories yet. Tap + to add one.</p></div>
+          <div className="flex flex-col items-center justify-center pt-4 animate-in fade-in zoom-in duration-500">
+             <div className="w-full bg-white p-6 rounded-3xl shadow-lg border border-indigo-50">
+                <div className="relative mb-2">
+                   <Type className="w-5 h-5 text-gray-300 absolute left-0 top-3" />
+                   <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Title (Optional - Auto Date)" className="w-full pl-8 py-2 text-xl font-bold text-gray-900 placeholder:text-gray-300 outline-none border-b border-transparent focus:border-gray-200 transition-colors" />
+                </div>
+                <div className="relative">
+                   <AlignLeft className="w-5 h-5 text-gray-300 absolute left-0 top-1" />
+                   <textarea value={newContent} onChange={(e) => setNewContent(e.target.value)} placeholder="Add details..." className="w-full pl-8 resize-none outline-none text-gray-600 placeholder:text-gray-300 min-h-[60px] mb-4 bg-transparent leading-relaxed" />
+                </div>
+                {imagePreview ? (
+                  <div className="relative mb-4 border-2 border-dashed border-indigo-100 rounded-lg overflow-hidden select-none touch-none">
+                    <div className="absolute inset-0 z-10 cursor-crosshair touch-none" onMouseDown={handleMouseDown} onMouseUp={handleMouseUp} onMouseLeave={() => setIsDrawing(false)} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}></div>
+                    <img ref={imgRef} src={imagePreview} className="w-full h-auto block" />
+                    {masks.map(mask => (<div key={mask.id} className="absolute bg-orange-500/60 border border-white/50" style={{left:`${mask.x}%`, top:`${mask.y}%`, width:`${mask.w}%`, height:`${mask.h}%`}}></div>))}
+                    <button onClick={() => {setImagePreview(null); setSelectedImage(null); setMasks([])}} className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full"><Eraser className="w-4 h-4" /></button>
+                  </div>
+                ) : ( <button onClick={() => fileInputRef.current?.click()} className="w-full py-8 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center text-gray-400 hover:border-indigo-300 hover:text-indigo-500 transition-colors"><ImageIcon className="w-8 h-8 mb-2" /><span className="font-bold">Add Image (Optional)</span></button> )}
+                <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageSelect} className="hidden" />
+                {masks.length > 0 && (<div className="flex justify-end mt-2"><button onClick={undoMask} className="flex items-center gap-2 text-red-500 font-bold bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-100"><Eraser className="w-4 h-4" /> Undo Mask</button></div>)}
+                <div className="flex justify-end pt-4"><button onClick={handleAddFirstNote} disabled={(!newTitle.trim() && !newContent.trim() && !selectedImage) || isSubmitting} className="bg-black text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-gray-800 disabled:opacity-50 transition-all">{isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Save</button></div>
+             </div>
+          </div>
         ) : (
           <>
             {dueNotes.length > 0 && (<section className="space-y-3 animate-in fade-in slide-in-from-top-4 duration-500"><div className="flex items-center gap-2 text-indigo-600 font-bold text-lg"><Clock className="w-5 h-5" /><h2>Review Due ({dueNotes.length})</h2></div><div className="grid gap-3">{dueNotes.map(note => (<NoteCard key={note.id} note={note} onClick={() => { setReviewingNote(note); setEditingContent(note.content); }} badge="Now" badgeColor="bg-indigo-50 text-indigo-600" />))}</div></section>)}
