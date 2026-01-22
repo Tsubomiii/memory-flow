@@ -108,7 +108,7 @@ export default function Home() {
   const handleLogout = async () => { if (isAnonymous && !confirm('Guest data will be lost. Are you sure?')) return; await supabase.auth.signOut(); navigate('/login'); window.location.reload() }
   const handleUpgradeAccount = async (e: React.FormEvent) => { e.preventDefault(); setIsRegistering(true); const { error } = await supabase.auth.updateUser({ email: registerEmail, password: registerPassword }); if (error) { alert(`Error: ${error.message}`) } else { setRegisterSuccess(true) }; setIsRegistering(false) }
 
-  // ✨ Calendar Logic
+  // Calendar Logic
   const getMonthData = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -133,36 +133,21 @@ export default function Home() {
     return logs.some(log => new Date(log.created_at).toDateString() === dateStr)
   }
 
-  // ✨ Stats Logic (Updated for Future = 0)
   const now = new Date()
-  let daysPassed = daysInMonth // 默认为当月天数（过去月份）
-
-  if (year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth())) {
-    // 未来月份
-    daysPassed = 0
-  } else if (year === now.getFullYear() && month === now.getMonth()) {
-    // 当前月份
-    daysPassed = now.getDate()
-  }
+  let daysPassed = daysInMonth
+  if (year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth())) { daysPassed = 0 } 
+  else if (year === now.getFullYear() && month === now.getMonth()) { daysPassed = now.getDate() }
 
   const daysStudied = days.filter(d => d && hasLogOnDate(d)).length
 
-  // Day Class Helper
   const getDayClass = (day: Date | null) => {
     if (!day) return 'invisible'
     const logged = hasLogOnDate(day)
     const today = isToday(day)
-    
     let classes = "h-10 flex items-center justify-center rounded-xl text-sm font-bold relative transition-all "
-    
-    if (logged) {
-      classes += "bg-indigo-600 text-white shadow-md shadow-indigo-200 "
-      if (today) classes += "ring-2 ring-offset-2 ring-black "
-    } else if (today) {
-      classes += "bg-black text-white shadow-lg "
-    } else {
-      classes += "text-gray-700 bg-gray-50 "
-    }
+    if (logged) { classes += "bg-indigo-600 text-white shadow-md shadow-indigo-200 "; if (today) classes += "ring-2 ring-offset-2 ring-black " } 
+    else if (today) { classes += "bg-black text-white shadow-lg " } 
+    else { classes += "text-gray-700 bg-gray-50 " }
     return classes
   }
 
@@ -180,7 +165,6 @@ export default function Home() {
 
   return (
     <div className="max-w-2xl mx-auto min-h-screen bg-gray-50 relative pb-32">
-      {/* ... (Modals omitted, logic unchanged) ... */}
       {isAnonymous && (<div className="bg-orange-50 border-b border-orange-100 p-3 px-6 flex items-center gap-3 animate-in slide-in-from-top duration-300"><AlertTriangle className="w-5 h-5 text-orange-500 shrink-0" /><div className="flex-1"><p className="text-sm text-orange-800 font-bold">Guest Mode Active</p><p className="text-xs text-orange-600">Bind email to save data permanently.</p></div><button onClick={() => setShowRegisterModal(true)} className="text-xs bg-gray-900 text-white border border-gray-900 px-4 py-2 rounded-lg font-bold hover:bg-gray-800 shadow-sm active:scale-95">Save Data</button></div>)}
       {showRegisterModal && (<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200"><div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 relative overflow-hidden"><button onClick={() => setShowRegisterModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-6 h-6" /></button>{registerSuccess ? (<div className="text-center py-8"><div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4"><Mail className="w-8 h-8" /></div><h3 className="text-xl font-bold text-gray-900 mb-2">Check your email</h3><p className="text-gray-500 text-sm mb-6">We sent a confirmation link to <strong>{registerEmail}</strong>.</p><button onClick={() => setShowRegisterModal(false)} className="w-full bg-gray-100 text-gray-900 py-3 rounded-xl font-bold hover:bg-gray-200">Got it</button></div>) : (<div className="text-center"><div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4"><Lock className="w-6 h-6" /></div><h3 className="text-xl font-black text-gray-900 mb-1">Save your Memories</h3><p className="text-gray-500 text-sm mb-6">Create an account to save data.</p><form onSubmit={handleUpgradeAccount} className="space-y-4"><div className="relative"><Mail className="w-5 h-5 text-gray-400 absolute left-4 top-3.5" /><input type="email" required placeholder="Email" value={registerEmail} onChange={e => setRegisterEmail(e.target.value)} className="w-full bg-gray-50 border border-gray-200 pl-11 pr-4 py-3 rounded-xl outline-none focus:border-black font-medium text-gray-900" /></div><div className="relative"><Lock className="w-5 h-5 text-gray-400 absolute left-4 top-3.5" /><input type="password" required placeholder="Set Password" minLength={6} value={registerPassword} onChange={e => setRegisterPassword(e.target.value)} className="w-full bg-gray-50 border border-gray-200 pl-11 pr-4 py-3 rounded-xl outline-none focus:border-black font-medium text-gray-900" /></div><button type="submit" disabled={isRegistering} className="w-full bg-black text-white py-3 rounded-xl font-bold hover:bg-gray-800 transition-all flex items-center justify-center gap-2">{isRegistering ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Create Account'}</button></form></div>)}</div></div>)}
       
@@ -240,36 +224,24 @@ export default function Home() {
              <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
                 <div className="flex justify-between items-center mb-6">
                    <button onClick={() => setCurrentDate(new Date(year, month - 1))} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
-                   
-                   {/* ✨ Month Title & Today Button */}
                    <div className="flex items-center gap-3">
                      <h2 className="text-xl font-black text-gray-900">{currentDate.toLocaleString('en-US', { month: 'long', year: 'numeric' })}</h2>
                      <button onClick={() => setCurrentDate(new Date())} className="text-[10px] font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded-full hover:bg-black hover:text-white transition-colors">Today</button>
                    </div>
-
                    <button onClick={() => setCurrentDate(new Date(year, month + 1))} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><ChevronRight className="w-5 h-5 text-gray-600" /></button>
                 </div>
-                
-                {/* ✨ Grid (English Days) */}
                 <div className="grid grid-cols-7 gap-2 mb-4 text-center">
                    {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => <div key={d} className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{d}</div>)}
-                   {days.map((day, i) => (
-                     <div key={i} className={getDayClass(day)}>
-                        {day ? day.getDate() : ''}
-                        {day && hasLogOnDate(day) && <div className="absolute -bottom-1 -right-1 bg-white text-indigo-600 rounded-full p-[2px] shadow-sm"><CheckCircle2 className="w-3 h-3" /></div>}
-                     </div>
-                   ))}
+                   {days.map((day, i) => (<div key={i} className={getDayClass(day)}>{day ? day.getDate() : ''}{day && hasLogOnDate(day) && <div className="absolute -bottom-1 -right-1 bg-white text-indigo-600 rounded-full p-[2px] shadow-sm"><CheckCircle2 className="w-3 h-3" /></div>}</div>))}
                 </div>
-                
-                <div className="text-right pt-2 border-t border-gray-50">
-                   <p className="text-sm text-gray-500 font-medium">Study Log <span className="text-indigo-600 font-black text-xl ml-1">{daysStudied}</span> / {daysPassed} days</p>
-                </div>
+                <div className="text-right pt-2 border-t border-gray-50"><p className="text-sm text-gray-500 font-medium">Study Log <span className="text-indigo-600 font-black text-xl ml-1">{daysStudied}</span> / {daysPassed} days</p></div>
              </div>
           </div>
         )}
       </div>
 
-      {activeTab === 'progress' && (<div className="fixed bottom-24 right-6 z-50"><Link to="/input" className="bg-black text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform active:scale-95 flex items-center justify-center"><Plus className="w-6 h-6" /></Link></div>)}
+      {/* ✨ Floating Action Button (Correctly Positioned) */}
+      {activeTab === 'progress' && (<div className="fixed bottom-24 left-0 right-0 w-full max-w-2xl mx-auto px-6 z-50 pointer-events-none flex justify-end"><Link to="/input" className="bg-black text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform active:scale-95 flex items-center justify-center pointer-events-auto"><Plus className="w-6 h-6" /></Link></div>)}
 
       <div className="fixed bottom-6 left-6 right-6 bg-white/90 backdrop-blur-md border border-gray-200 p-2 rounded-2xl shadow-2xl z-[60] flex justify-between items-center max-w-sm mx-auto">
          <button onClick={() => setActiveTab('progress')} className={`flex-1 flex flex-col items-center justify-center py-2 rounded-xl transition-all ${activeTab === 'progress' ? 'bg-black text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}><List className="w-5 h-5 mb-0.5" /><span className="text-[10px] font-bold">Progress</span></button>
