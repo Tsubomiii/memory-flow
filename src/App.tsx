@@ -6,9 +6,9 @@ import Home from './pages/Home'
 import Input from './pages/Input'
 import Record from './pages/Record'
 import Login from './pages/Login'
-import { Loader2, LogOut, BarChart2, PlusCircle, List } from 'lucide-react'
+import { Loader2, LogOut, BarChart2, PlusCircle, List, AlertTriangle } from 'lucide-react'
 
-// 底部导航栏 (Progress | Add | Record)
+// 底部导航栏
 function BottomNav() {
   const location = useLocation()
   if (location.pathname === '/login') return null
@@ -38,15 +38,15 @@ function BottomNav() {
   )
 }
 
-// 顶部退出按钮
-function TopBar() {
+// 顶部退出按钮 (接收点击回调)
+function TopBar({ isGuest, onLogoutClick }: { isGuest: boolean; onLogoutClick: () => void }) {
   const location = useLocation()
   if (location.pathname === '/login') return null
 
   return (
-    <div className="fixed top-0 right-0 p-5 z-50">
+    <div className={`fixed right-0 p-5 z-50 transition-all duration-300 ${isGuest ? 'top-14' : 'top-0'}`}>
       <button 
-        onClick={() => supabase.auth.signOut()}
+        onClick={onLogoutClick} // 触发弹窗
         className="text-gray-300 hover:text-black transition-colors"
       >
         <LogOut size={20} />
@@ -58,6 +58,7 @@ function TopBar() {
 function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false) // 弹窗状态
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -71,6 +72,11 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    setShowLogoutConfirm(false)
+  }
+
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-50">
@@ -79,11 +85,45 @@ function App() {
     )
   }
 
+  const isGuest = session?.user?.is_anonymous ?? false
+
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-20 selection:bg-gray-200">
-        {session && <TopBar />}
         
+        {session && <TopBar isGuest={isGuest} onLogoutClick={() => setShowLogoutConfirm(true)} />}
+        
+        {/* 退出确认弹窗 */}
+        {showLogoutConfirm && (
+          <div className="fixed inset-0 bg-black/60 z-[120] flex items-center justify-center p-6 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl relative text-center">
+              <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle size={24} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-black text-gray-900 mb-2">Sign Out?</h3>
+              <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                {isGuest 
+                  ? "Are you sure? Guest mode data will be lost immediately upon exit." 
+                  : "You are about to sign out of your account."}
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <button 
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="py-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleLogout}
+                  className="py-3 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 shadow-lg shadow-red-200 transition-colors"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <Routes>
           <Route path="/" element={session ? <Home /> : <Navigate to="/login" />} />
           <Route path="/add" element={session ? <Input /> : <Navigate to="/login" />} />
