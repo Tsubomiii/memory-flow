@@ -8,7 +8,7 @@ import Record from './pages/Record'
 import Login from './pages/Login'
 import { Loader2, LogOut, BarChart2, PlusCircle, List, AlertTriangle } from 'lucide-react'
 
-// 底部导航栏
+// 底部导航栏 (保持不变)
 function BottomNav() {
   const location = useLocation()
   if (location.pathname === '/login') return null
@@ -38,15 +38,18 @@ function BottomNav() {
   )
 }
 
-// 顶部退出按钮 (接收点击回调)
+// 顶部退出按钮
 function TopBar({ isGuest, onLogoutClick }: { isGuest: boolean; onLogoutClick: () => void }) {
   const location = useLocation()
   if (location.pathname === '/login') return null
 
   return (
-    <div className={`fixed right-0 p-5 z-50 transition-all duration-300 ${isGuest ? 'top-14' : 'top-0'}`}>
+    // ⭐️ 修改点：
+    // 1. absolute: 让它随页面滚动
+    // 2. z-30: 让它层级低于 Banner (z-40)，这样滚动时会钻到 Banner 下面去
+    <div className={`absolute right-0 p-5 z-30 transition-all duration-300 ${isGuest ? 'top-14' : 'top-0'}`}>
       <button 
-        onClick={onLogoutClick} // 触发弹窗
+        onClick={onLogoutClick}
         className="text-gray-300 hover:text-black transition-colors"
       >
         <LogOut size={20} />
@@ -58,7 +61,7 @@ function TopBar({ isGuest, onLogoutClick }: { isGuest: boolean; onLogoutClick: (
 function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false) // 弹窗状态
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -89,7 +92,8 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-20 selection:bg-gray-200">
+      {/* 相对定位容器 */}
+      <div className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-20 selection:bg-gray-200 relative">
         
         {session && <TopBar isGuest={isGuest} onLogoutClick={() => setShowLogoutConfirm(true)} />}
         
