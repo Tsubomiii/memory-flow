@@ -4,7 +4,6 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSam
 import { ChevronLeft, ChevronRight, Loader2, Check, User, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-// ... (Mask, Note 类型, safeFormatTime, safeGetDateKey 函数与上一版完全一致，此处省略以聚焦样式) ...
 type Mask = { id: number; x: number; y: number; width: number; height: number }
 type Note = {
   id: number; 
@@ -22,10 +21,31 @@ export default function Record() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date())
   const [isGuest, setIsGuest] = useState(false)
   const navigate = useNavigate()
+  
   const [allNotesMap, setAllNotesMap] = useState<Map<string, Note[]>>(new Map())
   const [previewNote, setPreviewNote] = useState<Note | null>(null)
   const [revealedMaskIds, setRevealedMaskIds] = useState<number[]>([])
+  
+  // ⭐️ 新增：注册弹窗状态
+  const [showAuthModal, setShowAuthModal] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [authLoading, setAuthLoading] = useState(false)
+
   const today = new Date()
+
+  // ⭐️ 新增：注册逻辑
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAuthLoading(true)
+    try {
+      const { data, error } = await supabase.auth.updateUser({ email: email, password: password })
+      if (error) throw error
+      alert('Registration successful! Your data is saved.')
+      setIsGuest(false) 
+      setShowAuthModal(false)
+    } catch (error: any) { alert(error.message) } finally { setAuthLoading(false) }
+  }
 
   const safeFormatTime = (dateStr: string | undefined | null): string => { if (!dateStr) return 'Unknown Time'; try { const date = parseISO(dateStr); if (!isValid(date)) return 'Invalid Date'; return format(date, 'HH:mm') } catch (e) { return 'Error Time' } }
   const safeGetDateKey = (dateStr: string | undefined | null): string | null => { if (!dateStr) return null; try { const date = parseISO(dateStr); if (!isValid(date)) return null; return format(date, 'yyyy-MM-dd') } catch (e) { return null } }
@@ -59,14 +79,32 @@ export default function Record() {
       {isGuest && (
         <div className="sticky top-0 z-40 bg-orange-50 border-b border-orange-100 px-6 py-3 flex justify-between items-center shadow-sm">
           <div className="flex items-center gap-2"><User size={16} className="text-orange-400" /><span className="text-xs font-bold text-orange-600 tracking-wide">Guest Mode: Data lost on exit</span></div>
-          <button onClick={() => navigate('/')} className="bg-black hover:bg-gray-800 text-white text-[10px] font-bold px-3 py-1.5 rounded-full transition-colors uppercase tracking-wider">Save Data</button>
+          {/* ⭐️ 修改点：Record 页的一键注册 */}
+          <button onClick={() => setShowAuthModal(true)} className="bg-black hover:bg-gray-800 text-white text-[10px] font-bold px-3 py-1.5 rounded-full transition-colors uppercase tracking-wider">Save Data</button>
+        </div>
+      )}
+
+      {/* ⭐️ 新增：Record 页的注册弹窗 */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-black/60 z-[110] flex items-center justify-center p-6 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl relative">
+            <button onClick={() => setShowAuthModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black"><X size={20}/></button>
+            <div className="text-center mb-6">
+              {/* 移除了橙色图标 */}
+              <h2 className="text-xl font-black text-gray-900">Save Your Progress</h2><p className="text-sm text-gray-400 mt-1">Create an account to sync your memories.</p>
+            </div>
+            <form onSubmit={handleSignUp} className="space-y-4">
+              <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-colors" />
+              <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-colors" />
+              <button type="submit" disabled={authLoading} className="w-full bg-black text-white font-bold py-3 rounded-xl hover:bg-gray-800 transition-colors flex justify-center items-center gap-2">{authLoading ? <Loader2 className="animate-spin" size={18}/> : 'Create Account'}</button>
+            </form>
+          </div>
         </div>
       )}
 
       <div className="max-w-3xl mx-auto p-6 pt-8">
         <div className="flex justify-between items-center mb-6"><h1 className="text-3xl font-black text-gray-900 tracking-tighter">Memory Flow</h1></div>
         <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-8 min-h-[500px] flex flex-col relative">
-          {/* ... 日历 Header 和 Grid (复用之前的) ... */}
           <div className="flex justify-between items-center mb-8 px-1">
             <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><ChevronLeft size={24} className="text-gray-400" /></button>
             <div className="flex items-center gap-4"><h2 className="text-xl font-bold text-gray-900 tracking-tight">{format(currentDate, 'MMMM yyyy')}</h2><button onClick={() => setCurrentDate(today)} className="bg-black hover:bg-gray-800 text-white text-[10px] font-bold px-3 py-1.5 rounded-full transition-colors uppercase tracking-wider shadow-md">Today</button></div>
@@ -84,7 +122,6 @@ export default function Record() {
                   if (!note || !note.id) return null
                   return (
                   <div key={note.id} onClick={() => setPreviewNote(note)} className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm cursor-pointer hover:border-gray-300 transition-colors flex items-center gap-2">
-                    {/* ⭐️ 修改点：蓝色圆点改为黑色 */}
                     <div className="w-1.5 h-1.5 rounded-full bg-black shrink-0"></div>
                     <span className="text-sm text-gray-700 font-medium truncate">{note.title || (note.created_at ? `${safeFormatTime(note.created_at)} Note` : 'Untitled Note')}</span>
                   </div>
@@ -94,7 +131,8 @@ export default function Record() {
           )}
         </div>
       </div>
-      {/* 预览 Modal (略) */}
+      
+      {/* 预览 Modal (保持不变) */}
       {previewNote && (<div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200"><div className="bg-white w-full max-w-lg shadow-2xl rounded-3xl flex flex-col max-h-[80vh] overflow-hidden relative"><div className="px-4 py-3 flex justify-between items-center border-b border-gray-100 bg-gray-50/50 shrink-0 z-10"><span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Read Only Mode</span><button onClick={() => { setPreviewNote(null); setRevealedMaskIds([]); }} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X size={20} className="text-gray-500" /></button></div><div className="flex-1 overflow-y-auto p-5 space-y-4 overscroll-contain"><h3 className="text-2xl font-black text-gray-900 leading-tight">{previewNote.title || 'Untitled'}</h3><div className="text-lg text-gray-800 whitespace-pre-wrap leading-relaxed font-normal">{previewNote.body || ''}</div>{previewNote.image_url && (<div className="relative rounded-2xl overflow-hidden border border-gray-100 select-none"><img src={previewNote.image_url} alt="Note" className="w-full h-auto" />{previewNote.masks?.map(mask => { const isRevealed = revealedMaskIds.includes(mask.id); return (<div key={mask.id} onClick={(e) => { e.stopPropagation(); toggleMask(mask.id); }} className={`absolute transition-all cursor-pointer ${isRevealed ? 'bg-transparent border border-orange-500/30' : 'bg-orange-500 hover:bg-orange-400 border-2 border-orange-500'}`} style={{ left: `${mask.x}%`, top: `${mask.y}%`, width: `${mask.width}%`, height: `${mask.height}%` }} />) })}</div>)}</div></div></div>)}
     </div>
   )

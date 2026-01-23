@@ -98,7 +98,6 @@ export default function Home() {
     return "Tap to review...";
   }
 
-  // --- Remember 逻辑 (进阶) ---
   const handleRemember = async (note: Note) => {
     const currentStage = note.review_stage
     let nextStage = currentStage + 1
@@ -122,16 +121,12 @@ export default function Home() {
     fetchNotes()
   }
 
-  // --- ⭐️ 修改点：Forgot 逻辑 (统一为：丢回待复习) ---
   const handleForgot = async (note: Note) => {
-    // 逻辑：将 next_review 设为现在，stage 保持不变
-    // 效果：Future 笔记变 Due，Due 笔记维持 Due
     await supabase.from('notes').update({ 
         next_review: new Date().toISOString() 
     }).eq('id', note.id)
-    
     closeModal()
-    fetchNotes() // 刷新列表，立刻看到变化
+    fetchNotes() 
   }
 
   const closeModal = () => { setSelectedNote(null); setRevealedMaskIds([]); setEditImagePreview(null); setEditImageFile(null); setEditMasks([]); setSelectedMaskId(null); }
@@ -170,7 +165,7 @@ export default function Home() {
           <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl relative">
             <button onClick={() => setShowAuthModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black"><X size={20}/></button>
             <div className="text-center mb-6">
-              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3"><LogIn size={24} className="text-orange-500" /></div>
+              {/* ⭐️ 修改点：移除了橙色图标 div */}
               <h2 className="text-xl font-black text-gray-900">Save Your Progress</h2><p className="text-sm text-gray-400 mt-1">Create an account to sync your memories.</p>
             </div>
             <form onSubmit={handleSignUp} className="space-y-4">
@@ -230,19 +225,15 @@ export default function Home() {
                 </div>
               )}
 
-              {/* ⭐️ 修改点：Future 底部按钮 (文案统一为 Forgot, 样式一致) */}
+              {/* FUTURE 底部按钮 */}
               {!isEditing && selectedNote.review_stage < 7 && new Date(selectedNote.next_review) > now && (
                 <div className="p-4 bg-gray-50 border-t border-gray-100 shrink-0 z-10">
-                  <button 
-                    onClick={() => handleForgot(selectedNote)} // 逻辑：踢回 Due
-                    className="w-full py-4 rounded-2xl border-2 border-gray-300 text-sm font-bold text-gray-400 hover:text-gray-600 hover:border-gray-400 uppercase tracking-widest transition-colors"
-                  >
+                  <button onClick={() => handleForgot(selectedNote)} className="w-full py-4 rounded-2xl border-2 border-gray-300 text-sm font-bold text-gray-400 hover:text-gray-600 hover:border-gray-400 uppercase tracking-widest transition-colors">
                     Forgot
                   </button>
                 </div>
               )}
               
-              {/* Mastered Footer */}
               {!isEditing && selectedNote.review_stage >= 7 && (<div className="p-4 bg-gray-50 border-t border-gray-100 shrink-0 z-10 text-center"><p className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center justify-center gap-2"><Award size={16}/> Memory Mastered</p></div>)}
             </div>
           </div>
