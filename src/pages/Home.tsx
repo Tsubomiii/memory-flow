@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef, MouseEvent, TouchEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { formatDistanceToNow, format, addDays, startOfDay } from 'date-fns'
+import { formatDistanceToNow, format, addDays, startOfDay, differenceInCalendarDays } from 'date-fns'
 import { enUS } from 'date-fns/locale'
-import { Loader2, Trash2, Edit2, X, Save, Clock, ImagePlus, Undo2, Award, User, LogIn } from 'lucide-react'
+import { Loader2, Trash2, Edit2, X, Save, Clock, ImagePlus, Undo2, Award, User, LogIn, Crown } from 'lucide-react'
 
 type Mask = {
   id: number
@@ -80,6 +80,56 @@ export default function Home() {
 
   const intervals = [1, 2, 4, 7, 15, 30]
   const now = new Date()
+
+  const isExpired = (note: Note) => {
+    if (new Date(note.next_review) > now) return false; 
+    const stage = note.review_stage;
+    if (stage === 0) return false; 
+    const currentInterval = intervals[stage - 1] || 1; 
+    const daysOverdue = differenceInCalendarDays(now, new Date(note.next_review));
+    return daysOverdue > (currentInterval * 2);
+  }
+
+  const getBadgeStyle = (note: Note) => {
+    if (isExpired(note)) return "bg-red-500 text-white"; 
+    const s = note.review_stage;
+    if (s === 0) return "bg-gray-100 text-gray-400"; 
+    if (s === 1) return "bg-slate-400 text-white"; 
+    if (s === 2) return "bg-slate-500 text-white"; 
+    if (s === 3) return "bg-blue-400 text-white"; 
+    if (s === 4) return "bg-blue-500 text-white"; 
+    if (s === 5) return "bg-blue-600 text-white"; 
+    return "bg-indigo-800 text-white"; 
+  }
+
+  const getBadgeContent = (note: Note) => {
+    if (isExpired(note)) return "Re-learn";
+    if (note.review_stage === 0) return "New";
+    return `${note.review_stage}`;
+  }
+
+  const getReviewCountText = (note: Note) => {
+    if (note.review_stage === 0) return "New Memory";
+    return `Reviewed ${note.review_stage} times`;
+  }
+
+  const getModalHeaderText = (note: Note) => {
+    if (isExpired(note)) return "Memory expired";
+
+    const isFuture = new Date(note.next_review) > now;
+    
+    if (isFuture) {
+        const daysUntil = differenceInCalendarDays(new Date(note.next_review), now);
+        const dayText = daysUntil <= 1 ? '1 day' : `${daysUntil} days`;
+        return `Next review in ${dayText}`;
+    } else {
+        const currentStage = note.review_stage;
+        const nextInterval = intervals[currentStage];
+        if (!nextInterval) return "Review due";
+        const dayText = nextInterval <= 1 ? '1 day' : `${nextInterval} days`;
+        return `Next review in ${dayText}`;
+    }
+  }
   
   const masteredNotes = notes.filter(n => n.review_stage >= 7)
   const activeNotes = notes.filter(n => n.review_stage < 7)
@@ -99,34 +149,31 @@ export default function Home() {
   }
 
   const handleRemember = async (note: Note) => {
-    const currentStage = note.review_stage
-    let nextStage = currentStage + 1
+    const expired = isExpired(note);
+    let nextStage;
+    if (expired) { nextStage = 1; } else { nextStage = note.review_stage + 1; }
     let nextReview = new Date()
-
-    if (currentStage >= intervals.length) { 
+    if (nextStage >= intervals.length) { 
         nextStage = 7 
         nextReview = new Date(now.getTime() + 100 * 365 * 24 * 60 * 60 * 1000) 
     } else {
-        const daysToAdd = intervals[currentStage]
+        const daysToAdd = intervals[nextStage - 1];
         nextReview = startOfDay(addDays(now, daysToAdd))
     }
-
-    await supabase.from('notes').update({ 
-        review_stage: nextStage, 
-        next_review: nextReview.toISOString() 
-    }).eq('id', note.id)
-
+    await supabase.from('notes').update({ review_stage: nextStage, next_review: nextReview.toISOString() }).eq('id', note.id)
     await supabase.from('study_logs').insert({ note_id: note.id })
     closeModal()
     fetchNotes()
   }
 
   const handleForgot = async (note: Note) => {
-    await supabase.from('notes').update({ 
-        next_review: new Date().toISOString() 
-    }).eq('id', note.id)
+    const isFuture = new Date(note.next_review) > now
+    if (isFuture) {
+        const newStage = Math.max(0, note.review_stage - 1)
+        await supabase.from('notes').update({ next_review: new Date().toISOString(), review_stage: newStage }).eq('id', note.id)
+        fetchNotes()
+    }
     closeModal()
-    fetchNotes() 
   }
 
   const closeModal = () => { setSelectedNote(null); setRevealedMaskIds([]); setEditImagePreview(null); setEditImageFile(null); setEditMasks([]); setSelectedMaskId(null); }
@@ -165,7 +212,6 @@ export default function Home() {
           <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl relative">
             <button onClick={() => setShowAuthModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black"><X size={20}/></button>
             <div className="text-center mb-6">
-              {/* ⭐️ 修改点：移除了橙色图标 div */}
               <h2 className="text-xl font-black text-gray-900">Save Your Progress</h2><p className="text-sm text-gray-400 mt-1">Create an account to sync your memories.</p>
             </div>
             <form onSubmit={handleSignUp} className="space-y-4">
@@ -182,9 +228,18 @@ export default function Home() {
         
         {/* NOW Section */}
         <section>
-          <div className="flex items-center gap-2 mb-3"><Clock size={20} className="text-blue-600" /><h2 className="text-xl font-bold text-blue-600 tracking-tight">Review Due ({dueNotes.length})</h2></div>
+          {/* ⭐️ 修改点 1：Review Due 文字和图标颜色改为 #007fc6 */}
+          <div className="flex items-center gap-2 mb-3">
+            <Clock size={20} className="text-[#007fc6]" />
+            <h2 className="text-xl font-bold text-[#007fc6] tracking-tight">Review Due ({dueNotes.length})</h2>
+          </div>
           <div className="space-y-3">
-            {dueNotes.length === 0 ? (<div className="text-center py-10 bg-white rounded-2xl border border-dashed border-gray-200"><p className="text-gray-400 font-medium">All caught up!</p></div>) : (dueNotes.map(note => { const { title } = getDisplayContent(note); const previewText = getPreviewText(note); return (<div key={note.id} onClick={() => openNote(note)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all cursor-pointer group"><div className="flex-1 min-w-0 mr-4"><h3 className="text-gray-900 font-bold text-base mb-1 truncate">{title}</h3><p className="text-gray-400 text-xs truncate font-medium opacity-60">{previewText}</p></div><div className="shrink-0 bg-blue-50 px-3 py-1 rounded-full group-hover:bg-blue-100 transition-colors"><span className="text-xs font-bold text-blue-600">Now</span></div></div>) }))}
+            {dueNotes.length === 0 ? (<div className="text-center py-10 bg-white rounded-2xl border border-dashed border-gray-200"><p className="text-gray-400 font-medium">All caught up!</p></div>) : (dueNotes.map(note => { const { title } = getDisplayContent(note); const previewText = getPreviewText(note); 
+            const isNew = note.review_stage === 0;
+            const badgeSize = isNew ? "h-6 min-w-[1.5rem] px-1.5" : "h-8 w-8"; 
+            const textSize = isNew ? "text-xs" : "text-sm"; 
+            
+            return (<div key={note.id} onClick={() => openNote(note)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all cursor-pointer group"><div className="flex-1 min-w-0 mr-4"><h3 className="text-gray-900 font-bold text-base mb-1 truncate">{title}</h3><p className="text-gray-400 text-xs truncate font-medium opacity-60">{previewText}</p></div><div className={`shrink-0 ${badgeSize} flex items-center justify-center rounded-full transition-colors ${getBadgeStyle(note)}`}><span className={`${textSize} font-bold`}>{getBadgeContent(note)}</span></div></div>) }))}
           </div>
         </section>
 
@@ -192,49 +247,98 @@ export default function Home() {
         <section>
           <h2 className="text-sm font-bold text-gray-400 mb-3 tracking-widest uppercase pl-1">Tomorrow & Beyond</h2>
           <div className="space-y-3">
-            {futureNotes.map(note => { const { title } = getDisplayContent(note); const previewText = getPreviewText(note); return (<div key={note.id} onClick={() => openNote(note)} className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between hover:border-gray-200 transition-all cursor-pointer"><div className="flex-1 min-w-0 mr-4"><h3 className="text-gray-800 font-semibold text-base truncate">{title}</h3><p className="text-gray-400 text-xs truncate font-medium opacity-60">{previewText}</p></div><div className="shrink-0 bg-orange-50 px-3 py-1 rounded-full"><span className="text-xs font-bold text-orange-400">{formatDistanceToNow(new Date(note.next_review), { locale: enUS }).replace('about ', '')}</span></div></div>) })}
+            {futureNotes.map(note => { 
+               const { title } = getDisplayContent(note)
+               const previewText = getPreviewText(note)
+               const daysUntil = differenceInCalendarDays(new Date(note.next_review), now)
+               const dayText = daysUntil <= 1 ? '1 day' : `${daysUntil} days`
+               return (
+              <div key={note.id} onClick={() => openNote(note)} className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between hover:border-gray-200 transition-all cursor-pointer">
+                <div className="flex-1 min-w-0 mr-4">
+                  <h3 className="text-gray-800 font-semibold text-base truncate">{title}</h3>
+                  <p className="text-gray-400 text-xs truncate font-medium opacity-60">{previewText}</p>
+                </div>
+                <div className="shrink-0 bg-orange-50 px-3 py-1 rounded-full flex items-center justify-center">
+                  <span className="text-xs font-bold text-orange-400">{dayText}</span>
+                </div>
+              </div>
+            )})}
           </div>
         </section>
 
-        {masteredNotes.length > 0 && (<section className="pt-6 border-t border-gray-100"><div className="flex items-center gap-2 mb-3 opacity-50"><Award size={16} className="text-gray-400" /><h2 className="text-sm font-bold text-gray-400 tracking-widest uppercase">Mastered ({masteredNotes.length})</h2></div><div className="space-y-2 opacity-40 hover:opacity-100 transition-opacity duration-300">{masteredNotes.map(note => { const { title } = getDisplayContent(note); return (<div key={note.id} onClick={() => openNote(note)} className="bg-gray-50 px-4 py-2 rounded-xl flex items-center justify-between cursor-pointer hover:bg-gray-100"><h3 className="text-gray-500 font-medium text-xs truncate">{title}</h3><span className="text-[10px] font-bold text-gray-300 uppercase">Done</span></div>) })}</div></section>)}
+        {masteredNotes.length > 0 && (<section className="pt-6 border-t border-gray-100"><div className="flex items-center gap-2 mb-3 opacity-50"><Crown size={16} className="text-yellow-500" /><h2 className="text-sm font-bold text-gray-400 tracking-widest uppercase">Mastered ({masteredNotes.length})</h2></div><div className="space-y-2 opacity-40 hover:opacity-100 transition-opacity duration-300">{masteredNotes.map(note => { const { title } = getDisplayContent(note); return (<div key={note.id} onClick={() => openNote(note)} className="bg-gray-50 px-4 py-2 rounded-xl flex items-center justify-between cursor-pointer hover:bg-gray-100"><h3 className="text-gray-500 font-medium text-xs truncate">{title}</h3><span className="text-[10px] font-bold text-yellow-500 uppercase">Done</span></div>) })}</div></section>)}
 
         {/* Note Modal */}
         {selectedNote && (
           <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-lg shadow-2xl rounded-3xl flex flex-col max-h-[80vh] overflow-hidden relative">
               <div className="px-4 py-2 flex justify-between items-center border-b border-gray-100 bg-gray-50/50 shrink-0 z-10">
-                <button onClick={closeModal} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X size={20} className="text-gray-500" /></button>
+                {!isEditing ? (
+                  // ⭐️ 修改点 2：弹窗顶部 Next review 文字颜色改为 text-orange-400
+                  <span className={`text-xs font-bold uppercase tracking-widest ${isExpired(selectedNote) ? 'text-red-500' : 'text-orange-400'}`}>
+                    {getModalHeaderText(selectedNote)}
+                  </span>
+                ) : (
+                  <button onClick={closeModal} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X size={20} className="text-gray-500" /></button>
+                )}
+                
                 <div className="flex gap-2">
-                  {isEditing ? (<button onClick={handleSaveEdit} disabled={isSavingEdit} className="text-xs font-bold bg-black text-white px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-gray-800 disabled:opacity-50">{isSavingEdit ? <Loader2 className="animate-spin" size={14}/> : <><Save size={14}/> SAVE</>}</button>) : (<button onClick={() => setIsEditing(true)} className="p-2 hover:bg-gray-200 rounded-lg transition-colors"><Edit2 size={18} className="text-gray-500" /></button>)}
+                  {isEditing ? (
+                    // ⭐️ 修改点 3：Save 按钮去掉图标，只保留 SAVE 文字
+                    <button onClick={handleSaveEdit} disabled={isSavingEdit} className="text-xs font-bold bg-black text-white px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-gray-800 disabled:opacity-50">
+                      {isSavingEdit ? <Loader2 className="animate-spin" size={14}/> : 'SAVE'}
+                    </button>
+                  ) : (
+                    <button onClick={() => setIsEditing(true)} className="p-2 hover:bg-gray-200 rounded-lg transition-colors"><Edit2 size={18} className="text-gray-500" /></button>
+                  )}
                   <button onClick={() => handleDelete(selectedNote.id)} className="p-2 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18} className="text-gray-300 hover:text-red-500" /></button>
+                  {!isEditing && <button onClick={closeModal} className="p-2 hover:bg-gray-200 rounded-lg transition-colors"><X size={20} className="text-gray-500" /></button>}
                 </div>
               </div>
+              
               <div className="flex-1 overflow-y-auto p-5 space-y-4 overscroll-contain">
                 {isEditing ? (
-                  <div className="space-y-4"><div><input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} maxLength={50} placeholder="Title (Optional, Defaults to time if empty)" className="w-full text-xl font-bold outline-none border-b border-gray-500 pb-2" /></div><textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} placeholder="Text" className="w-full h-40 p-0 outline-none resize-none text-lg text-gray-800 leading-relaxed font-normal" /><div><input type="file" ref={fileInputRef} onChange={(e) => { const file = e.target.files?.[0]; if(file) { setEditImageFile(file); setEditImagePreview(URL.createObjectURL(file)); setEditMasks([]); setSelectedMaskId(null); } }} accept="image/*" className="hidden" /><div className="flex justify-between items-center mb-2"><button onClick={() => fileInputRef.current?.click()} className="text-sm font-bold text-blue-600 hover:underline flex gap-1 items-center"><ImagePlus size={16}/> {selectedNote.image_url ? 'Change Image' : 'Add Image'}</button><div className="flex gap-2">{selectedMaskId ? (<button onClick={handleDeleteSelectedMask} className="text-xs font-bold text-red-500 hover:text-red-700 flex gap-1 items-center bg-red-50 px-2 py-1 rounded transition-colors"><Trash2 size={12}/> Delete Mask</button>) : (<button onClick={() => setEditMasks(editMasks.slice(0, -1))} className="text-xs font-bold text-gray-500 hover:text-black flex gap-1 items-center bg-gray-100 px-2 py-1 rounded transition-colors"><Undo2 size={12}/> Undo Last</button>)}</div></div>{(editImagePreview || selectedNote.image_url) && (<div ref={containerRef} className="relative rounded-xl overflow-hidden border border-gray-200 cursor-crosshair touch-none select-none" onMouseDown={handleDrawStart} onMouseMove={handleDrawMove} onMouseUp={handleDrawEnd} onMouseLeave={handleDrawEnd} onTouchStart={handleDrawStart} onTouchMove={handleDrawMove} onTouchEnd={handleDrawEnd}><img src={editImagePreview || selectedNote.image_url || ''} alt="Preview" className="w-full h-auto object-contain pointer-events-none" />{editMasks.map(mask => { const isSelected = mask.id === selectedMaskId; return (<div key={mask.id} onMouseDown={(e) => { e.stopPropagation(); setSelectedMaskId(mask.id); }} onTouchStart={(e) => { e.stopPropagation(); setSelectedMaskId(mask.id); }} className={`absolute bg-orange-500/50 cursor-pointer transition-all ${isSelected ? 'border-2 border-red-600 z-10' : 'border border-orange-600'}`} style={{ left: `${mask.x}%`, top: `${mask.y}%`, width: `${mask.width}%`, height: `${mask.height}%` }} />) })}{currentRect && (<div className="absolute bg-orange-500/30 border-2 border-orange-500" style={{ left: `${currentRect.x}%`, top: `${currentRect.y}%`, width: `${currentRect.width}%`, height: `${currentRect.height}%` }} />)}</div>)}<p className="text-center text-xs text-gray-400 mt-2">{selectedMaskId ? "Click 'Delete Mask' to remove selected" : "Click and drag to hide answers. Click a mask to select it."}</p></div></div>
+                  <div className="space-y-4">
+                    <div><input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} maxLength={50} placeholder="Title (Optional, Defaults to time if empty)" className="w-full text-xl font-bold outline-none border-b border-gray-500 pb-2" /></div>
+                    <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} placeholder="Text" className="w-full h-40 p-0 outline-none resize-none text-lg text-gray-800 leading-relaxed font-normal" />
+                    <div>
+                      <input type="file" ref={fileInputRef} onChange={(e) => { const file = e.target.files?.[0]; if(file) { setEditImageFile(file); setEditImagePreview(URL.createObjectURL(file)); setEditMasks([]); setSelectedMaskId(null); } }} accept="image/*" className="hidden" />
+                      <div className="flex justify-between items-center mb-2">
+                        {/* ⭐️ 修改点 4：Change/Add Image 按钮颜色改为 #007fc6 */}
+                        <button onClick={() => fileInputRef.current?.click()} className="text-sm font-bold text-[#007fc6] hover:underline flex gap-1 items-center">
+                          <ImagePlus size={16}/> {selectedNote.image_url ? 'Change Image' : 'Add Image'}
+                        </button>
+                        <div className="flex gap-2">{selectedMaskId ? (<button onClick={handleDeleteSelectedMask} className="text-xs font-bold text-red-500 hover:text-red-700 flex gap-1 items-center bg-red-50 px-2 py-1 rounded transition-colors"><Trash2 size={12}/> Delete Mask</button>) : (<button onClick={() => setEditMasks(editMasks.slice(0, -1))} className="text-xs font-bold text-gray-500 hover:text-black flex gap-1 items-center bg-gray-100 px-2 py-1 rounded transition-colors"><Undo2 size={12}/> Undo Last</button>)}</div>
+                      </div>
+                      {(editImagePreview || selectedNote.image_url) && (<div ref={containerRef} className="relative rounded-xl overflow-hidden border border-gray-200 cursor-crosshair touch-none select-none" onMouseDown={handleDrawStart} onMouseMove={handleDrawMove} onMouseUp={handleDrawEnd} onMouseLeave={handleDrawEnd} onTouchStart={handleDrawStart} onTouchMove={handleDrawMove} onTouchEnd={handleDrawEnd}><img src={editImagePreview || selectedNote.image_url || ''} alt="Preview" className="w-full h-auto object-contain pointer-events-none" />{editMasks.map(mask => { const isSelected = mask.id === selectedMaskId; return (<div key={mask.id} onMouseDown={(e) => { e.stopPropagation(); setSelectedMaskId(mask.id); }} onTouchStart={(e) => { e.stopPropagation(); setSelectedMaskId(mask.id); }} className={`absolute bg-orange-500/50 cursor-pointer transition-all ${isSelected ? 'border-2 border-red-600 z-10' : 'border border-orange-600'}`} style={{ left: `${mask.x}%`, top: `${mask.y}%`, width: `${mask.width}%`, height: `${mask.height}%` }} />) })}{currentRect && (<div className="absolute bg-orange-500/30 border-2 border-orange-500" style={{ left: `${currentRect.x}%`, top: `${currentRect.y}%`, width: `${currentRect.width}%`, height: `${currentRect.height}%` }} />)}</div>)}
+                      <p className="text-center text-xs text-gray-400 mt-2">{selectedMaskId ? "Click 'Delete Mask' to remove selected" : "Click and drag to hide answers. Click a mask to select it."}</p>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="space-y-4"><h3 className="text-2xl font-black text-gray-900 leading-tight">{getDisplayContent(selectedNote).title}</h3>{getDisplayContent(selectedNote).body && (<div className="text-lg text-gray-800 whitespace-pre-wrap leading-relaxed font-normal">{getDisplayContent(selectedNote).body}</div>)}{selectedNote.image_url && (<div className="relative rounded-2xl overflow-hidden border border-gray-100 select-none"><img src={selectedNote.image_url} alt="Note attachment" className="w-full h-auto" />{selectedNote.masks?.map(mask => { const isRevealed = revealedMaskIds.includes(mask.id); return (<div key={mask.id} onClick={(e) => { e.stopPropagation(); toggleMask(mask.id); }} className={`absolute transition-all cursor-pointer ${isRevealed ? 'bg-transparent border border-orange-500/30' : 'bg-orange-500 hover:bg-orange-400 border-2 border-orange-500'}`} style={{ left: `${mask.x}%`, top: `${mask.y}%`, width: `${mask.width}%`, height: `${mask.height}%` }} />) })}</div>)}</div>
+                  <div className="space-y-4">
+                    <h3 className="text-2xl font-black text-gray-900 leading-tight">{getDisplayContent(selectedNote).title}</h3>
+                    {getDisplayContent(selectedNote).body && (<div className="text-lg text-gray-800 whitespace-pre-wrap leading-relaxed font-normal">{getDisplayContent(selectedNote).body}</div>)}
+                    {selectedNote.image_url && (<div className="relative rounded-2xl overflow-hidden border border-gray-100 select-none"><img src={selectedNote.image_url} alt="Note attachment" className="w-full h-auto" />{selectedNote.masks?.map(mask => { const isRevealed = revealedMaskIds.includes(mask.id); return (<div key={mask.id} onClick={(e) => { e.stopPropagation(); toggleMask(mask.id); }} className={`absolute transition-all cursor-pointer ${isRevealed ? 'bg-transparent border border-orange-500/30' : 'bg-orange-500 hover:bg-orange-400 border-2 border-orange-500'}`} style={{ left: `${mask.x}%`, top: `${mask.y}%`, width: `${mask.width}%`, height: `${mask.height}%` }} />) })}</div>)}
+                    
+                    <div className="pt-4 text-center">
+                        <p className="text-xs font-medium text-gray-300 uppercase tracking-widest">{getReviewCountText(selectedNote)}</p>
+                    </div>
+                  </div>
                 )}
               </div>
               
-              {/* NOW 底部按钮 */}
               {!isEditing && selectedNote.review_stage < 7 && new Date(selectedNote.next_review) <= now && (
                 <div className="p-4 grid grid-cols-2 gap-4 bg-gray-50 border-t border-gray-100 shrink-0 z-10">
                   <button onClick={() => handleForgot(selectedNote)} className="py-4 rounded-2xl border-2 border-gray-300 text-sm font-bold text-gray-400 hover:text-gray-600 hover:border-gray-400 uppercase tracking-widest transition-colors">Forgot</button>
                   <button onClick={() => handleRemember(selectedNote)} className="py-4 bg-black text-white text-sm font-bold rounded-2xl uppercase tracking-widest shadow-xl hover:scale-[1.02] active:scale-95 transition-all">Remember</button>
                 </div>
               )}
-
-              {/* FUTURE 底部按钮 */}
               {!isEditing && selectedNote.review_stage < 7 && new Date(selectedNote.next_review) > now && (
                 <div className="p-4 bg-gray-50 border-t border-gray-100 shrink-0 z-10">
-                  <button onClick={() => handleForgot(selectedNote)} className="w-full py-4 rounded-2xl border-2 border-gray-300 text-sm font-bold text-gray-400 hover:text-gray-600 hover:border-gray-400 uppercase tracking-widest transition-colors">
-                    Forgot
-                  </button>
+                  <button onClick={() => handleForgot(selectedNote)} className="w-full py-4 rounded-2xl border-2 border-gray-300 text-sm font-bold text-gray-400 hover:text-gray-600 hover:border-gray-400 uppercase tracking-widest transition-colors">Forgot</button>
                 </div>
               )}
-              
-              {!isEditing && selectedNote.review_stage >= 7 && (<div className="p-4 bg-gray-50 border-t border-gray-100 shrink-0 z-10 text-center"><p className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center justify-center gap-2"><Award size={16}/> Memory Mastered</p></div>)}
+              {!isEditing && selectedNote.review_stage >= 7 && (<div className="p-4 bg-gray-50 border-t border-gray-100 shrink-0 z-10 text-center"><p className="text-xs font-bold text-yellow-500 uppercase tracking-widest flex items-center justify-center gap-2"><Crown size={16}/> Memory Mastered</p></div>)}
             </div>
           </div>
         )}
