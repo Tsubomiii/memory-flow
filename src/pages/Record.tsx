@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, parseISO, getDate, getDaysInMonth, isFuture, isThisMonth, isValid } from 'date-fns'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, getDate, getDaysInMonth, isFuture, isThisMonth } from 'date-fns'
 import { ChevronLeft, ChevronRight, Loader2, Check, User, X, RefreshCw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -46,36 +46,35 @@ export default function Record() {
     } catch (error: any) { alert(error.message) } finally { setAuthLoading(false) }
   }
 
-  const safeFormatTime = (dateStr: string | undefined | null): string => { if (!dateStr) return ''; try { const date = parseISO(dateStr); if (!isValid(date)) return ''; return format(date, 'HH:mm') } catch (e) { return '' } }
-  const safeGetDateKey = (dateStr: string | undefined | null): string | null => { if (!dateStr) return null; try { const date = parseISO(dateStr); if (!isValid(date)) return null; return format(date, 'yyyy-MM-dd') } catch (e) { return null } }
+  // ⭐️ 修复时区：使用 new Date() 强制转换为本地时间
+  const safeFormatTime = (dateStr: string | undefined | null): string => { 
+    if (!dateStr) return ''; 
+    const date = new Date(dateStr); // Browser handles UTC -> Local conversion
+    return isNaN(date.getTime()) ? '' : format(date, 'HH:mm');
+  }
+  
+  const safeGetDateKey = (dateStr: string | undefined | null): string | null => { 
+    if (!dateStr) return null; 
+    const date = new Date(dateStr); 
+    if (isNaN(date.getTime())) return null; 
+    return format(date, 'yyyy-MM-dd'); // Output: "2026-01-23" (Local Time)
+  }
 
-  // ⭐️ 核心修复：强制 ID 类型匹配
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      // 1. 获取所有“新建”的记录
       const { data: createdData } = await supabase.from('notes').select('*')
-      
-      // 2. 获取所有“复习”的日志
       const { data: logData } = await supabase.from('study_logs').select('created_at, note_id')
 
-      // 3. 构建详情字典 (Key 强制转为 String)
       const noteDetailsMap = new Map<string, Note>();
-      createdData?.forEach(n => {
-          // ⚠️ 关键点：统一用 String(id) 作为 Key
-          noteDetailsMap.set(String(n.id), n);
-      });
+      createdData?.forEach(n => { noteDetailsMap.set(String(n.id), n); });
 
       const dates = new Set<string>()
       const map = new Map<string, Note[]>()
 
-      // 辅助函数：把笔记塞进某一天的列表里
       const addNoteToMap = (dateKey: string, noteId: number | string, activityTime: string) => { 
-          // ⚠️ 关键点：统一用 String(id) 去查找
           const idStr = String(noteId);
           const noteDetail = noteDetailsMap.get(idStr);
-          
-          // 如果找不到详情 (说明 ID 类型不匹配或者笔记被删了)，直接返回
           if (!noteDetail) return; 
 
           const list = map.get(dateKey) || []; 
@@ -92,25 +91,16 @@ export default function Record() {
           map.set(dateKey, list) 
       }
 
-      // A. 处理新建数据
       createdData?.forEach(n => { 
           const dateKey = safeGetDateKey(n.created_at); 
-          if (dateKey) { 
-              dates.add(dateKey); 
-              addNoteToMap(dateKey, n.id, n.created_at) 
-          } 
+          if (dateKey) { dates.add(dateKey); addNoteToMap(dateKey, n.id, n.created_at) } 
       })
 
-      // B. 处理复习数据
       logData?.forEach((log: any) => { 
           const logDateKey = safeGetDateKey(log.created_at); 
-          if (logDateKey && log.note_id) { 
-              dates.add(logDateKey); 
-              addNoteToMap(logDateKey, log.note_id, log.created_at)
-          } 
+          if (logDateKey && log.note_id) { dates.add(logDateKey); addNoteToMap(logDateKey, log.note_id, log.created_at) } 
       })
 
-      // 排序：最新的在最上面
       map.forEach((notes) => {
           notes.sort((a, b) => {
               const tA = a.activity_time || '';
