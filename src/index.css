@@ -10,11 +10,14 @@ body {
   margin: 0;
   font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
-  background: #0b1221;
-  color: #e8eefc;
+  
+  /* 👇 修改这里：把深色 #0b1221 改成浅色 #f9fafb (对应 gray-50) */
+  background: #f9fafb; 
+  
+  /* 👇 修改这里：文字颜色也改成深灰，防止加载时出现浅色字看不清 */
+  color: #111827;
 }
 
 a {
   color: inherit;
 }
-
