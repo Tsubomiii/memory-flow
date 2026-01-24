@@ -116,9 +116,8 @@ export default function Home() {
     return `Reviewed ${note.review_stage} times`;
   }
 
-  // ⭐️ 核心修改：文案逻辑
   const getModalHeaderText = (note: Note) => {
-    if (note.review_stage >= 7) return "Memory Mastered"; // 优先判断 Mastered
+    if (note.review_stage >= 7) return "Memory Mastered"; 
     if (isExpired(note)) return "Memory expired";
     
     const isFuture = new Date(note.next_review) > now;
@@ -135,10 +134,9 @@ export default function Home() {
     }
   }
 
-  // ⭐️ 核心修改：颜色逻辑 (深红 & 金色)
   const getModalHeaderStyle = (note: Note) => {
       if (note.review_stage >= 7) return "text-yellow-500";
-      if (isExpired(note)) return "text-red-700"; // Deep Red
+      if (isExpired(note)) return "text-red-700"; 
       return "text-orange-400";
   }
   
@@ -177,8 +175,8 @@ export default function Home() {
 
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-        const { error: logError } = await supabase.from('study_logs').insert({ note_id: note.id, user_id: user.id })
-        if (!logError) triggerSuccessToast();
+        // ⭐️ 已移除 toast 触发，现在是静默记录
+        await supabase.from('study_logs').insert({ note_id: note.id, user_id: user.id })
     }
     
     closeModal()
@@ -194,8 +192,8 @@ export default function Home() {
         
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-            const { error: logError } = await supabase.from('study_logs').insert({ note_id: note.id, user_id: user.id })
-            if (!logError) triggerSuccessToast();
+            // ⭐️ 已移除 toast 触发，现在是静默记录
+            await supabase.from('study_logs').insert({ note_id: note.id, user_id: user.id })
         }
         fetchNotes()
     }
@@ -343,7 +341,6 @@ export default function Home() {
             <div className="bg-white w-full max-w-lg shadow-2xl rounded-3xl flex flex-col max-h-[80vh] overflow-hidden relative">
               <div className="px-4 py-2 flex justify-between items-center border-b border-gray-100 bg-gray-50/50 shrink-0 z-10">
                 {!isEditing ? (
-                  // ⭐️ 顶部逻辑应用
                   <span className={`text-xs font-bold uppercase tracking-widest ${getModalHeaderStyle(selectedNote)}`}>
                     {getModalHeaderText(selectedNote)}
                   </span>
@@ -387,7 +384,6 @@ export default function Home() {
                     {getDisplayContent(selectedNote).body && (<div className="text-lg text-gray-800 whitespace-pre-wrap leading-relaxed font-normal">{getDisplayContent(selectedNote).body}</div>)}
                     {selectedNote.image_url && (<div className="relative rounded-2xl overflow-hidden border border-gray-100 select-none"><img src={selectedNote.image_url} alt="Note attachment" className="w-full h-auto" />{selectedNote.masks?.map(mask => { const isRevealed = revealedMaskIds.includes(mask.id); return (<div key={mask.id} onClick={(e) => { e.stopPropagation(); toggleMask(mask.id); }} className={`absolute transition-all cursor-pointer ${isRevealed ? 'bg-transparent border border-orange-500/30' : 'bg-orange-500 hover:bg-orange-400 border-2 border-orange-500'}`} style={{ left: `${mask.x}%`, top: `${mask.y}%`, width: `${mask.width}%`, height: `${mask.height}%` }} />) })}</div>)}
                     
-                    {/* ⭐️ 底部逻辑应用：显示日期或 - */}
                     <div className="pt-4 text-center space-y-1">
                         <p className="text-[10px] font-medium text-gray-300 uppercase tracking-widest">
                           Last Reviewed: {currentLastReviewed ? format(new Date(currentLastReviewed), 'yyyy/MM/dd') : '-'}
