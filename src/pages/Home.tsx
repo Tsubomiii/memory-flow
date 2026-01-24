@@ -175,7 +175,6 @@ export default function Home() {
 
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-        // ⭐️ 已移除 toast 触发，现在是静默记录
         await supabase.from('study_logs').insert({ note_id: note.id, user_id: user.id })
     }
     
@@ -192,7 +191,6 @@ export default function Home() {
         
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-            // ⭐️ 已移除 toast 触发，现在是静默记录
             await supabase.from('study_logs').insert({ note_id: note.id, user_id: user.id })
         }
         fetchNotes()
@@ -260,7 +258,10 @@ export default function Home() {
   if (loading) return <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-gray-900" /></div>
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    // ⭐️ 核心修复：使用 fixed inset-0 强制钉在屏幕上
+    // 这样浏览器就别无选择，只能在这个框里渲染
+    <div className="fixed inset-0 w-full bg-gray-50 flex flex-col pt-[env(safe-area-inset-top)] z-0">
+      
       {showSuccessToast && (
           <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded-full flex items-center gap-2 z-[200] animate-in fade-in slide-in-from-top-4 shadow-xl backdrop-blur-sm">
               <CheckCircle2 size={16} className="text-green-400" />
@@ -269,7 +270,7 @@ export default function Home() {
       )}
 
       {isGuest && (
-        <div className="sticky top-0 z-40 bg-orange-50 border-b border-orange-100 px-6 py-3 flex justify-between items-center shadow-sm">
+        <div className="shrink-0 z-40 bg-orange-50 border-b border-orange-100 px-6 py-3 flex justify-between items-center shadow-sm relative">
           <div className="flex items-center gap-2"><User size={16} className="text-orange-400" /><span className="text-xs font-bold text-orange-600 tracking-wide">Guest Mode: Data lost on exit</span></div>
           <button onClick={() => setShowAuthModal(true)} className="bg-black hover:bg-gray-800 text-white text-[10px] font-bold px-3 py-1.5 rounded-full transition-colors uppercase tracking-wider">Save Data</button>
         </div>
@@ -291,49 +292,55 @@ export default function Home() {
         </div>
       )}
 
-      <div className="max-w-3xl mx-auto p-6 space-y-8 pt-8">
-        <h1 className="text-3xl font-black text-gray-900 tracking-tighter mb-4">Memory Flow</h1>
-        
-        {/* NOW Section */}
-        <section>
-          <div className="flex items-center gap-2 mb-3">
-            <Clock size={20} className="text-[#007fc6]" />
-            <h2 className="text-xl font-bold text-[#007fc6] tracking-tight">Review Due ({dueNotes.length})</h2>
-          </div>
-          <div className="space-y-3">
-            {dueNotes.length === 0 ? (<div className="text-center py-10 bg-white rounded-2xl border border-dashed border-gray-200"><p className="text-gray-400 font-medium">All caught up!</p></div>) : (dueNotes.map(note => { const { title } = getDisplayContent(note); const previewText = getPreviewText(note); 
-            const isNew = note.review_stage === 0;
-            const badgeSize = isNew ? "h-6 min-w-[1.5rem] px-1.5" : "h-8 w-8"; 
-            const textSize = isNew ? "text-xs" : "text-sm"; 
+      {/* ⭐️ 核心修复 2：滚动容器 
+          touch-pan-y: 允许垂直滑动
+          flex-1: 占满剩余高度
+          overflow-y-auto: 开启滚动条
+      */}
+      <div className="flex-1 overflow-y-auto touch-pan-y overscroll-contain pb-32 relative">
+        <div className="max-w-3xl mx-auto p-6 space-y-8 pt-8">
+            <h1 className="text-3xl font-black text-gray-900 tracking-tighter mb-4">Memory Flow</h1>
             
-            return (<div key={note.id} onClick={() => openNote(note)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all cursor-pointer group"><div className="flex-1 min-w-0 mr-4"><h3 className="text-gray-900 font-bold text-base mb-1 truncate">{title}</h3><p className="text-gray-400 text-xs truncate font-medium opacity-60">{previewText}</p></div><div className={`shrink-0 ${badgeSize} flex items-center justify-center rounded-full transition-colors ${getBadgeStyle(note)}`}><span className={`${textSize} font-bold`}>{getBadgeContent(note)}</span></div></div>) }))}
-          </div>
-        </section>
+            <section>
+            <div className="flex items-center gap-2 mb-3">
+                <Clock size={20} className="text-[#007fc6]" />
+                <h2 className="text-xl font-bold text-[#007fc6] tracking-tight">Review Due ({dueNotes.length})</h2>
+            </div>
+            <div className="space-y-3">
+                {dueNotes.length === 0 ? (<div className="text-center py-10 bg-white rounded-2xl border border-dashed border-gray-200"><p className="text-gray-400 font-medium">All caught up!</p></div>) : (dueNotes.map(note => { const { title } = getDisplayContent(note); const previewText = getPreviewText(note); 
+                const isNew = note.review_stage === 0;
+                const badgeSize = isNew ? "h-6 min-w-[1.5rem] px-1.5" : "h-8 w-8"; 
+                const textSize = isNew ? "text-xs" : "text-sm"; 
+                
+                return (<div key={note.id} onClick={() => openNote(note)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all cursor-pointer group"><div className="flex-1 min-w-0 mr-4"><h3 className="text-gray-900 font-bold text-base mb-1 truncate">{title}</h3><p className="text-gray-400 text-xs truncate font-medium opacity-60">{previewText}</p></div><div className={`shrink-0 ${badgeSize} flex items-center justify-center rounded-full transition-colors ${getBadgeStyle(note)}`}><span className={`${textSize} font-bold`}>{getBadgeContent(note)}</span></div></div>) }))}
+            </div>
+            </section>
 
-        {/* FUTURE Section */}
-        <section>
-          <h2 className="text-sm font-bold text-gray-400 mb-3 tracking-widest uppercase pl-1">Tomorrow & Beyond</h2>
-          <div className="space-y-3">
-            {futureNotes.map(note => { 
-               const { title } = getDisplayContent(note)
-               const previewText = getPreviewText(note)
-               const daysUntil = differenceInCalendarDays(new Date(note.next_review), now)
-               const dayText = daysUntil <= 1 ? '1 day' : `${daysUntil} days`
-               return (
-              <div key={note.id} onClick={() => openNote(note)} className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between hover:border-gray-200 transition-all cursor-pointer">
-                <div className="flex-1 min-w-0 mr-4">
-                  <h3 className="text-gray-800 font-semibold text-base truncate">{title}</h3>
-                  <p className="text-gray-400 text-xs truncate font-medium opacity-60">{previewText}</p>
+            <section>
+            <h2 className="text-sm font-bold text-gray-400 mb-3 tracking-widest uppercase pl-1">Tomorrow & Beyond</h2>
+            <div className="space-y-3">
+                {futureNotes.map(note => { 
+                const { title } = getDisplayContent(note)
+                const previewText = getPreviewText(note)
+                const daysUntil = differenceInCalendarDays(new Date(note.next_review), now)
+                const dayText = daysUntil <= 1 ? '1 day' : `${daysUntil} days`
+                return (
+                <div key={note.id} onClick={() => openNote(note)} className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between hover:border-gray-200 transition-all cursor-pointer">
+                    <div className="flex-1 min-w-0 mr-4">
+                    <h3 className="text-gray-800 font-semibold text-base truncate">{title}</h3>
+                    <p className="text-gray-400 text-xs truncate font-medium opacity-60">{previewText}</p>
+                    </div>
+                    <div className="shrink-0 bg-orange-50 px-3 py-1 rounded-full flex items-center justify-center">
+                    <span className="text-xs font-bold text-orange-400">{dayText}</span>
+                    </div>
                 </div>
-                <div className="shrink-0 bg-orange-50 px-3 py-1 rounded-full flex items-center justify-center">
-                  <span className="text-xs font-bold text-orange-400">{dayText}</span>
-                </div>
-              </div>
-            )})}
-          </div>
-        </section>
+                )})}
+            </div>
+            </section>
 
-        {masteredNotes.length > 0 && (<section className="pt-6 border-t border-gray-100"><div className="flex items-center gap-2 mb-3 opacity-50"><Crown size={16} className="text-yellow-500" /><h2 className="text-sm font-bold text-gray-400 tracking-widest uppercase">Mastered ({masteredNotes.length})</h2></div><div className="space-y-2 opacity-40 hover:opacity-100 transition-opacity duration-300">{masteredNotes.map(note => { const { title } = getDisplayContent(note); return (<div key={note.id} onClick={() => openNote(note)} className="bg-gray-50 px-4 py-2 rounded-xl flex items-center justify-between cursor-pointer hover:bg-gray-100"><h3 className="text-gray-500 font-medium text-xs truncate">{title}</h3><span className="text-[10px] font-bold text-yellow-500 uppercase">Done</span></div>) })}</div></section>)}
+            {masteredNotes.length > 0 && (<section className="pt-6 border-t border-gray-100"><div className="flex items-center gap-2 mb-3 opacity-50"><Crown size={16} className="text-yellow-500" /><h2 className="text-sm font-bold text-gray-400 tracking-widest uppercase">Mastered ({masteredNotes.length})</h2></div><div className="space-y-2 opacity-40 hover:opacity-100 transition-opacity duration-300">{masteredNotes.map(note => { const { title } = getDisplayContent(note); return (<div key={note.id} onClick={() => openNote(note)} className="bg-gray-50 px-4 py-2 rounded-xl flex items-center justify-between cursor-pointer hover:bg-gray-100"><h3 className="text-gray-500 font-medium text-xs truncate">{title}</h3><span className="text-[10px] font-bold text-yellow-500 uppercase">Done</span></div>) })}</div></section>)}
+        </div>
+      </div>
 
         {/* Note Modal */}
         {selectedNote && (
@@ -411,7 +418,6 @@ export default function Home() {
             </div>
           </div>
         )}
-      </div>
     </div>
   )
 }

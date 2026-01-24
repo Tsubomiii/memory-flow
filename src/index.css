@@ -6,18 +6,38 @@
   color-scheme: light;
 }
 
-body {
-  margin: 0;
-  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+/* 1. 锁死最外层窗口 (The Frame) */
+/* 这样无论怎么用力滑，浏览器本身（桌子）都不会动，也不会露底 */
+html, body {
+  height: 100%;          /* 强制高度占满屏幕 */
+  width: 100%;
+  overflow: hidden;      /* 🚫 禁止浏览器窗口级的滚动 */
+  background: #f9fafb;   /* 浅灰底色 */
+  color: #111827;        /* 深灰文字 */
   
-  /* 👇 修改这里：把深色 #0b1221 改成浅色 #f9fafb (对应 gray-50) */
-  background: #f9fafb; 
-  
-  /* 👇 修改这里：文字颜色也改成深灰，防止加载时出现浅色字看不清 */
-  color: #111827;
+  /* 禁止 iOS 浏览器的橡皮筋效果波及到整个页面 */
+  overscroll-behavior: none; 
 }
 
+/* 2. 创建内部滚动容器 (The App) */
+/* 这是你的 React 应用挂载点，所有的滚动都发生在这里面 */
+#root {
+  height: 100%;          /* 占满被锁死的窗口 */
+  width: 100%;
+  
+  /* ✅ 开启内部滚动 */
+  overflow-y: auto;      
+  
+  /* 🍎 iOS 专属：开启原生级丝滑滚动与回弹 (Momentum Scrolling) */
+  -webkit-overflow-scrolling: touch; 
+  
+  /* 布局设置 */
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+/* 3. 全局链接颜色 */
 a {
   color: inherit;
 }
