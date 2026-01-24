@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, getDate, getDaysInMonth, isFuture, isThisMonth } from 'date-fns'
-import { ChevronLeft, ChevronRight, Loader2, Check, User, X, RefreshCw } from 'lucide-react'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, parseISO, getDate, getDaysInMonth, isFuture, isThisMonth, isValid } from 'date-fns'
+import { ChevronLeft, ChevronRight, Loader2, Check, User, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 type Mask = { id: number; x: number; y: number; width: number; height: number }
@@ -12,7 +12,8 @@ type Note = {
   body?: string | null;
   image_url?: string | null; 
   masks?: Mask[] | null;
-  activity_time?: string; 
+  activity_time?: string; // 用于列表排序（显示该条目属于那一天的活动）
+  last_reviewed_at?: string; // ⭐️ 新增：全局最新的复习/活动时间
 }
 
 export default function Record() {
@@ -46,10 +47,9 @@ export default function Record() {
     } catch (error: any) { alert(error.message) } finally { setAuthLoading(false) }
   }
 
-  // ⭐️ 修复时区：使用 new Date() 强制转换为本地时间
   const safeFormatTime = (dateStr: string | undefined | null): string => { 
     if (!dateStr) return ''; 
-    const date = new Date(dateStr); // Browser handles UTC -> Local conversion
+    const date = new Date(dateStr); 
     return isNaN(date.getTime()) ? '' : format(date, 'HH:mm');
   }
   
@@ -57,7 +57,13 @@ export default function Record() {
     if (!dateStr) return null; 
     const date = new Date(dateStr); 
     if (isNaN(date.getTime())) return null; 
-    return format(date, 'yyyy-MM-dd'); // Output: "2026-01-23" (Local Time)
+    return format(date, 'yyyy-MM-dd'); 
+  }
+
+  const getReviewDateText = (dateStr: string | undefined) => {
+      if (!dateStr) return 'Unknown Date';
+      const date = new Date(dateStr);
+      return isNaN(date.getTime()) ? 'Unknown Date' : format(date, 'yyyy/MM/dd');
   }
 
   const fetchData = useCallback(async () => {
@@ -69,23 +75,49 @@ export default function Record() {
       const noteDetailsMap = new Map<string, Note>();
       createdData?.forEach(n => { noteDetailsMap.set(String(n.id), n); });
 
+      // ⭐️ 第一步：计算每个笔记的“全局最新时间” (Global Latest Activity)
+      // 逻辑：遍历所有新建记录和复习记录，对每个 ID 找出最大的时间戳
+      const globalLatestMap = new Map<string, string>(); // noteId -> maxTimestamp
+
+      const updateLatest = (id: string, time: string) => {
+          const currentMax = globalLatestMap.get(id);
+          if (!currentMax || time > currentMax) {
+              globalLatestMap.set(id, time);
+          }
+      }
+
+      createdData?.forEach(n => updateLatest(String(n.id), n.created_at));
+      logData?.forEach((l: any) => updateLatest(String(l.note_id), l.created_at));
+
+
+      // ⭐️ 第二步：构建每一天的列表
       const dates = new Set<string>()
       const map = new Map<string, Note[]>()
 
-      const addNoteToMap = (dateKey: string, noteId: number | string, activityTime: string) => { 
+      const addNoteToMap = (dateKey: string, noteId: number | string, currentActivityTime: string) => { 
           const idStr = String(noteId);
           const noteDetail = noteDetailsMap.get(idStr);
           if (!noteDetail) return; 
 
+          // 获取该笔记的全局最新时间
+          const globalLatest = globalLatestMap.get(idStr) || currentActivityTime;
+
           const list = map.get(dateKey) || []; 
           const existingIndex = list.findIndex(n => String(n.id) === idStr);
           
+          const noteObj = { 
+              ...noteDetail, 
+              activity_time: currentActivityTime, // 用于排序：这条记录在“今天”是什么时候发生的
+              last_reviewed_at: globalLatest      // 用于弹窗：这个笔记“最新”一次活动是什么时候
+          } as Note;
+
           if (existingIndex === -1) {
-              list.push({ ...noteDetail, activity_time: activityTime } as Note); 
+              list.push(noteObj); 
           } else {
               const existing = list[existingIndex];
-              if (activityTime > (existing.activity_time || '')) {
-                   list[existingIndex] = { ...noteDetail, activity_time: activityTime };
+              // 依然保留“取当天最晚活动”的逻辑，防止同一天重复
+              if (currentActivityTime > (existing.activity_time || '')) {
+                   list[existingIndex] = noteObj;
               }
           }
           map.set(dateKey, list) 
@@ -162,7 +194,6 @@ export default function Record() {
       <div className="max-w-3xl mx-auto p-6 pt-8">
         <div className="flex justify-between items-center mb-6">
             <h1 className="text-3xl font-black text-gray-900 tracking-tighter">Record</h1>
-            <button onClick={fetchData} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"><RefreshCw size={16} className="text-gray-500" /></button>
         </div>
         
         <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-8 min-h-[500px] flex flex-col relative">
@@ -195,11 +226,15 @@ export default function Record() {
         </div>
       </div>
       
+      {/* 只读预览 Modal */}
       {previewNote && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-lg shadow-2xl rounded-3xl flex flex-col max-h-[80vh] overflow-hidden relative">
                 <div className="px-4 py-3 flex justify-between items-center border-b border-gray-100 bg-gray-50/50 shrink-0 z-10">
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Read Only Mode</span>
+                    {/* ⭐️ 修改点：使用计算好的 last_reviewed_at */}
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                        Last Reviewed: {getReviewDateText(previewNote.last_reviewed_at)}
+                    </span>
                     <button onClick={() => { setPreviewNote(null); setRevealedMaskIds([]); }} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X size={20} className="text-gray-500" /></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 overscroll-contain">

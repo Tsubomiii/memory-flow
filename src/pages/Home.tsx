@@ -5,8 +5,14 @@ import { formatDistanceToNow, format, addDays, startOfDay, differenceInCalendarD
 import { enUS } from 'date-fns/locale'
 import { Loader2, Trash2, Edit2, X, Save, Clock, ImagePlus, Undo2, Award, User, LogIn, Crown, CheckCircle2 } from 'lucide-react'
 
-// ... (Mask, Note 类型定义保持不变)
-type Mask = { id: number; x: number; y: number; width: number; height: number }
+type Mask = {
+  id: number
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 type Note = {
   id: number; 
   title?: string | null;      
@@ -45,6 +51,9 @@ export default function Home() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
+  
+  const [showSuccessToast, setShowSuccessToast] = useState(false)
+  const [currentLastReviewed, setCurrentLastReviewed] = useState<string | null>(null)
 
   const fetchNotes = async () => {
     setLoading(true)
@@ -107,8 +116,11 @@ export default function Home() {
     return `Reviewed ${note.review_stage} times`;
   }
 
+  // ⭐️ 核心修改：文案逻辑
   const getModalHeaderText = (note: Note) => {
+    if (note.review_stage >= 7) return "Memory Mastered"; // 优先判断 Mastered
     if (isExpired(note)) return "Memory expired";
+    
     const isFuture = new Date(note.next_review) > now;
     if (isFuture) {
         const daysUntil = differenceInCalendarDays(new Date(note.next_review), now);
@@ -121,6 +133,13 @@ export default function Home() {
         const dayText = nextInterval <= 1 ? '1 day' : `${nextInterval} days`;
         return `Next review in ${dayText}`;
     }
+  }
+
+  // ⭐️ 核心修改：颜色逻辑 (深红 & 金色)
+  const getModalHeaderStyle = (note: Note) => {
+      if (note.review_stage >= 7) return "text-yellow-500";
+      if (isExpired(note)) return "text-red-700"; // Deep Red
+      return "text-orange-400";
   }
   
   const masteredNotes = notes.filter(n => n.review_stage >= 7)
@@ -140,10 +159,7 @@ export default function Home() {
     return "Tap to review...";
   }
 
-  // ⭐️ 调试版 Handle Remember
   const handleRemember = async (note: Note) => {
-    // alert("Debug: Start Remember for Note " + note.id); // 调试点 1
-
     const expired = isExpired(note);
     let nextStage;
     if (expired) { nextStage = 1; } else { nextStage = note.review_stage + 1; }
@@ -156,52 +172,51 @@ export default function Home() {
         nextReview = startOfDay(addDays(now, daysToAdd))
     }
     
-    // Step 1: 更新 Note
     const { error: updateError } = await supabase.from('notes').update({ review_stage: nextStage, next_review: nextReview.toISOString() }).eq('id', note.id)
-    if (updateError) { 
-        alert("❌ Step 1 Failed (Update Note): " + updateError.message); 
-        return; 
-    }
-    // alert("✅ Step 1 OK: Note Updated"); // 调试点 2
+    if (updateError) { alert("Error: " + updateError.message); return; }
 
-    // Step 2: 写入日志
-    const { error: logError } = await supabase.from('study_logs').insert({ note_id: note.id })
-    if (logError) {
-        // ⚠️ 如果这里报错，截图告诉我报错信息！
-        alert("❌ Step 2 Failed (Write Log): " + logError.message);
-    } else {
-        // alert("✅ Step 2 OK: Log Written!"); // 调试点 3
-        // 成功！
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+        const { error: logError } = await supabase.from('study_logs').insert({ note_id: note.id, user_id: user.id })
+        if (!logError) triggerSuccessToast();
     }
     
     closeModal()
     fetchNotes()
   }
 
-  // ⭐️ 调试版 Handle Forgot
   const handleForgot = async (note: Note) => {
     const isFuture = new Date(note.next_review) > now
     if (isFuture) {
-        // alert("Debug: Start Forgot (Future) for Note " + note.id);
         const newStage = Math.max(0, note.review_stage - 1)
-        
         const { error: updateError } = await supabase.from('notes').update({ next_review: new Date().toISOString(), review_stage: newStage }).eq('id', note.id)
-        if (updateError) { alert("Error Updating: " + updateError.message); return; }
+        if (updateError) { alert("Error: " + updateError.message); return; }
         
-        const { error: logError } = await supabase.from('study_logs').insert({ note_id: note.id })
-        if (logError) {
-             alert("Error Logging: " + logError.message)
-        } else {
-             // alert("✅ Logged Forgot Action");
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            const { error: logError } = await supabase.from('study_logs').insert({ note_id: note.id, user_id: user.id })
+            if (!logError) triggerSuccessToast();
         }
         fetchNotes()
     }
     closeModal()
   }
 
-  const closeModal = () => { setSelectedNote(null); setRevealedMaskIds([]); setEditImagePreview(null); setEditImageFile(null); setEditMasks([]); setSelectedMaskId(null); }
+  const triggerSuccessToast = () => {
+      setShowSuccessToast(true);
+      setTimeout(() => setShowSuccessToast(false), 2000);
+  }
+
+  const closeModal = () => { 
+      setSelectedNote(null); 
+      setRevealedMaskIds([]); 
+      setEditImagePreview(null); 
+      setEditImageFile(null); 
+      setEditMasks([]); 
+      setSelectedMaskId(null); 
+      setCurrentLastReviewed(null);
+  }
   
-  // ... (Drawing handlers remain same)
   const getPointFromEvent = (e: MouseEvent | TouchEvent) => {
     if (!containerRef.current) return { x: 0, y: 0 }
     const rect = containerRef.current.getBoundingClientRect()
@@ -217,13 +232,44 @@ export default function Home() {
   const handleDeleteSelectedMask = () => { if (selectedMaskId) { setEditMasks(editMasks.filter(m => m.id !== selectedMaskId)); setSelectedMaskId(null) } }
   const handleSaveEdit = async () => { if (!selectedNote) return; setIsSavingEdit(true); try { let imageUrl = selectedNote.image_url; if (editImageFile) { const { data: { user } } = await supabase.auth.getUser(); if (user) { const fileExt = editImageFile.name.split('.').pop(); const fileName = `${user.id}/${Date.now()}_edit.${fileExt}`; await supabase.storage.from('note-images').upload(fileName, editImageFile); const { data } = supabase.storage.from('note-images').getPublicUrl(fileName); imageUrl = data.publicUrl } } const updates = { title: editTitle.trim() || null, body: editBody.trim(), image_url: imageUrl, masks: editMasks }; await supabase.from('notes').update(updates).eq('id', selectedNote.id); setNotes(notes.map(n => n.id === selectedNote.id ? { ...n, ...updates } : n)); setSelectedNote({ ...selectedNote, ...updates }); setIsEditing(false); setEditImageFile(null); setEditImagePreview(null); setSelectedMaskId(null) } catch (error) { alert("Failed to save edit") } finally { setIsSavingEdit(false) } }
   const handleDelete = async (id: number) => { if (!confirm('Delete this note?')) return; await supabase.from('notes').delete().eq('id', id); closeModal(); fetchNotes() }
-  const openNote = (note: Note) => { const { title, body } = getDisplayContent(note); setSelectedNote(note); setEditTitle(note.title || ''); setEditBody(body); setEditMasks(note.masks || []); setIsEditing(false); setRevealedMaskIds([]); setSelectedMaskId(null) }
+  
+  const openNote = async (note: Note) => { 
+      const { title, body } = getDisplayContent(note); 
+      setSelectedNote(note); 
+      setEditTitle(note.title || ''); 
+      setEditBody(body); 
+      setEditMasks(note.masks || []); 
+      setIsEditing(false); 
+      setRevealedMaskIds([]); 
+      setSelectedMaskId(null);
+      
+      const { data } = await supabase.from('study_logs')
+        .select('created_at')
+        .eq('note_id', note.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+        
+      if (data) {
+          setCurrentLastReviewed(data.created_at);
+      } else {
+          setCurrentLastReviewed(null);
+      }
+  }
+  
   const toggleMask = (id: number) => { if (revealedMaskIds.includes(id)) { setRevealedMaskIds(revealedMaskIds.filter(mid => mid !== id)) } else { setRevealedMaskIds([...revealedMaskIds, id]) } }
 
   if (loading) return <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-gray-900" /></div>
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
+      {showSuccessToast && (
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded-full flex items-center gap-2 z-[200] animate-in fade-in slide-in-from-top-4 shadow-xl backdrop-blur-sm">
+              <CheckCircle2 size={16} className="text-green-400" />
+              <span className="text-xs font-bold uppercase tracking-wide">Saved to Record</span>
+          </div>
+      )}
+
       {isGuest && (
         <div className="sticky top-0 z-40 bg-orange-50 border-b border-orange-100 px-6 py-3 flex justify-between items-center shadow-sm">
           <div className="flex items-center gap-2"><User size={16} className="text-orange-400" /><span className="text-xs font-bold text-orange-600 tracking-wide">Guest Mode: Data lost on exit</span></div>
@@ -297,7 +343,8 @@ export default function Home() {
             <div className="bg-white w-full max-w-lg shadow-2xl rounded-3xl flex flex-col max-h-[80vh] overflow-hidden relative">
               <div className="px-4 py-2 flex justify-between items-center border-b border-gray-100 bg-gray-50/50 shrink-0 z-10">
                 {!isEditing ? (
-                  <span className={`text-xs font-bold uppercase tracking-widest ${isExpired(selectedNote) ? 'text-red-500' : 'text-orange-400'}`}>
+                  // ⭐️ 顶部逻辑应用
+                  <span className={`text-xs font-bold uppercase tracking-widest ${getModalHeaderStyle(selectedNote)}`}>
                     {getModalHeaderText(selectedNote)}
                   </span>
                 ) : (
@@ -340,8 +387,14 @@ export default function Home() {
                     {getDisplayContent(selectedNote).body && (<div className="text-lg text-gray-800 whitespace-pre-wrap leading-relaxed font-normal">{getDisplayContent(selectedNote).body}</div>)}
                     {selectedNote.image_url && (<div className="relative rounded-2xl overflow-hidden border border-gray-100 select-none"><img src={selectedNote.image_url} alt="Note attachment" className="w-full h-auto" />{selectedNote.masks?.map(mask => { const isRevealed = revealedMaskIds.includes(mask.id); return (<div key={mask.id} onClick={(e) => { e.stopPropagation(); toggleMask(mask.id); }} className={`absolute transition-all cursor-pointer ${isRevealed ? 'bg-transparent border border-orange-500/30' : 'bg-orange-500 hover:bg-orange-400 border-2 border-orange-500'}`} style={{ left: `${mask.x}%`, top: `${mask.y}%`, width: `${mask.width}%`, height: `${mask.height}%` }} />) })}</div>)}
                     
-                    <div className="pt-4 text-center">
-                        <p className="text-xs font-medium text-gray-300 uppercase tracking-widest">{getReviewCountText(selectedNote)}</p>
+                    {/* ⭐️ 底部逻辑应用：显示日期或 - */}
+                    <div className="pt-4 text-center space-y-1">
+                        <p className="text-[10px] font-medium text-gray-300 uppercase tracking-widest">
+                          Last Reviewed: {currentLastReviewed ? format(new Date(currentLastReviewed), 'yyyy/MM/dd') : '-'}
+                        </p>
+                        <p className="text-[10px] font-medium text-gray-300 uppercase tracking-widest">
+                          {getReviewCountText(selectedNote)}
+                        </p>
                     </div>
                   </div>
                 )}
@@ -349,7 +402,6 @@ export default function Home() {
               
               {!isEditing && selectedNote.review_stage < 7 && new Date(selectedNote.next_review) <= now && (
                 <div className="p-4 grid grid-cols-2 gap-4 bg-gray-50 border-t border-gray-100 shrink-0 z-10">
-                  {/* ⭐️ Forgot (Left, Gray), Remember (Right, Black) */}
                   <button onClick={() => handleForgot(selectedNote)} className="py-4 rounded-2xl border-2 border-gray-300 text-sm font-bold text-gray-400 hover:text-gray-600 hover:border-gray-400 uppercase tracking-widest transition-colors">Forgot</button>
                   <button onClick={() => handleRemember(selectedNote)} className="py-4 bg-black text-white text-sm font-bold rounded-2xl uppercase tracking-widest shadow-xl hover:scale-[1.02] active:scale-95 transition-all">Remember</button>
                 </div>
